@@ -1,14 +1,10 @@
 #! /usr/bin/make -f 
 
-orig:=src/eto_utm10_nad27
-orig.epsg:=epsg:26710
-epsg:=epsg:3310
+# Converting to WGS84 is a more accepted GEOJSON format.
+geojson/original_zones.geojson: src/original_zones.vrt
+	ogr2ogr -f GEOJSON  -t_srs WGS84 $@ $<
 
-colon:=:
-
-data/original_zones.geojson: $(patsubst %,${orig}.%,shp shx dbf)
-	ogr2ogr -f GEOJSON -s_srs ${orig.epsg} -t_srs epsg:4326 $@ ${orig}.shp $(notdir ${orig})
-
-data/epsg3310/original_zones.geojson: $(patsubst %,${orig}.%,shp shx dbf)
-	ogr2ogr -f GEOJSON -s_srs ${orig.epsg} -t_srs ${epsg} $@ ${orig}.shp $(notdir ${orig})
-
+# Here's an Example of materializing that VRT file, for example to
+# upload to Google Maps.
+shp: src/original_zones.vrt
+	ogr2ogr $@ $<
