@@ -1,0 +1,23 @@
+<OGRVRTDataSource>
+ <OGRVRTWarpedLayer>
+  <OGRVRTLayer name="original_zones">
+    <SrcDataSource relativeToVRT="1">eto_utm10_nad27.shp</SrcDataSource>
+    <SrcLayer>eto_utm10_nad27</SrcLayer>
+    <LayerSRS>epsg:26710</LayerSRS>
+    <Field name="definition" src="DEFINITION" type="STRING"/>
+    <Field name="jan" src="JAN" type="Real"/>
+    <Field name="feb" src="FEB" type="Real"/>
+    <Field name="mar" src="MAR" type="Real"/>
+    <Field name="apr" src="APR" type="Real"/>
+    <Field name="may" src="MAY" type="Real"/>
+    <Field name="june" src="JUNE" type="Real"/>
+    <Field name="july" src="JULY" type="Real"/>
+    <Field name="aug" src="AUG" type="Real"/>
+    <Field name="sept" src="SEPT" type="Real"/>
+    <Field name="oct" src="OCT" type="Real"/>
+    <Field name="nov" src="NOV" type="Real"/>
+    <Field name="dec" src="DEC" type="Real"/>
+  </OGRVRTLayer>
+<TargetSRS>epsg:3310</TargetSRS>
+</OGRVRTWarpedLayer>
+</OGRVRTDataSource>
