@@ -11,5 +11,5 @@ INFO:
 	echo ${months}
 	echo ${tifs}
 
-# for m in `seq -f %02g 1 12`; do mkdir $m; for r in ETo; do r.out.gdal input=${r}@xxxx-${m} output=${m}_${r}.tif; done; done
+# for m in `seq -f %02g 1 12`; do mkdir $m; for r in ETo; do r.out.gdal input=${r}@xxxx-${m} output=${m}_${r}.tif; done; don
 

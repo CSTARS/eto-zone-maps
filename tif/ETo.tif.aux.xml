@@ -1,0 +1,35 @@
+<PAMDataset>
+  <PAMRasterBand band="2">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="3">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="4">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="5">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="6">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="7">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="8">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="9">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="10">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="11">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+  <PAMRasterBand band="12">
+    <ColorInterp>Gray</ColorInterp>
+  </PAMRasterBand>
+</PAMDataset>
