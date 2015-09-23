@@ -1,8 +1,3 @@
-# Poplar Water Use
-
-Here we are interested in determining the total amount of poplar water use.  The idea here is to compare the Penman-Monteith version of ET in the 3PG model with the Kc tests that have been performed in (Gochis 2000)
-
-
 ## Fourier Transform
 
 There are two different ways to think about the CIMIS fourier transform.  One, we can combine all ten years together and compute the transform once, or we can calculate the transform for all years, and combine the results.  Remember, we are only interested in the zeroth and first transform values (for each year).
