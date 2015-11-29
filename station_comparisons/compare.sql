@@ -124,7 +124,7 @@ create table regression (
 id integer,
 parm text,
 use use_t,
-rmse decimal(6,4),
+xfrmse decimal(6,4),
 slope decimal(6,2),
 intercept decimal(6,2),
 r2 decimal(6,2),

@@ -60,13 +60,13 @@ JAS       |            | 5.54+-1.41 | 5.42+-1.54 | 5.35+-1.47 | 5.39+-1.48 | 5.4
 
 ## Station Differences
 
-For each of these stations, we can compare the station measurements to those measurments as calculated by the Spatial CIMIS program.  We can do this if the following ways.  First, for each station, and for each season, we can calculate what the average absolute difference in the Spatial CIMIS data as compared to the Station calculated data.  This will show us any overall bias in the maps.  When we do this we only include the station data used in the calculation of the ETo maps in the Spatial CIMIS dataset.
+For each of these stations, we can compare the station measurements to those measurments as calculated by the Spatial CIMIS program.  We can do this if the following ways.  First, for each station, and for each season, we can calculate what the average difference in the Spatial CIMIS data as compared to the Station calculated data.  This will show us any overall bias in the maps.  When we do this we only include the station data used in the calculation of the ETo maps in the Spatial CIMIS dataset.
 
 The average station error per season, as well as the minimum and maximum average differences are shown below.  On average, biases are small, with that greatest average bias being -0.25 mm/day for the AMJ season.  While the largest under prediction is almost consistently station Piru, the largest over prediction changes every season.  
 
 season_id |  under prediction   |  Average Bias |  Overprediction
 --- | ---
 OND       | -0.98 (Piru) | -0.07 | 0.36 (La Quinta)
-JFM       | -0.91 (215)  | -0.10 | 0.24 (Glendale)
+JFM       | -0.91 (Coalinga)  | -0.10 | 0.24 (Glendale)
 AMJ       | -1.63 (Piru) | -0.23 | 0.68 (Calipatria)
 JAS       | -1.54 (Piru) |  0.05 | 1.02 (Big Bear Lake)
