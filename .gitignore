@@ -2,3 +2,4 @@
 \#*\#
 .\#*
 fft/*.csv
+station_comparisons/json/*.json
