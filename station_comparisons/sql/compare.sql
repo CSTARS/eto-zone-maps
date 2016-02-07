@@ -92,6 +92,15 @@ create table station_info (
 -- );
 -- copy raster from :'raster' with csv header null '*';
 
+-- Patch the Raster data
+--create table fao_raster (
+--x float,y float,station_id integer,ymd date,
+--ETo float,Rso float,K float);
+--copy fao_raster from :'raster' with csv header null '*';
+--alter table raster add column fao_rso float;
+--alter table raster add column fao_eto float; 
+--update raster r set fao_rso=f.rso,fao_eto=f.eto from fao_raster f where r.station_id=f.station_id and r.ymd=f.ymd;
+
 create view seasons as
 with s("order",season_id,months) as ( VALUES
    (1,'OND',ARRAY[10,11,12]),
