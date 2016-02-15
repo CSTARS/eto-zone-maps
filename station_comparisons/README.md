@@ -9,7 +9,29 @@ JFM | JAN, FEB, MAR
 AMJ | APR, MAY, JUN
 JAS | JUL, AUG, SEP
 
+## Station Data
+
+I haven't created a makefile to retrieve the data.  For to get the data, I've used this quick set of commands:
+```{bash}
+# in GRASSDB/cimis/quinn
+if (true); then
+  vars=ETo,Tn,Tx,Tdew,Rs,Rso,Rnl,U2,K
+  file=~/station_raster_data.csv
+else # FAO_data
+  vars=vars=FAO_ETo,FAO_Rso,K # for FAO data
+  file=~/station_raster_fao_data.csv
+fi
+rm ${file}
+echo x,y,station,date,$vars > ${file}
+for m in 20??-??-??; do
+  echo $m;
+  v.out.ascii fs=' ' input=stations | cut -d' ' -f 1,2,4 |  sed -e "s/$/,$m/" |\
+    r.what input=$(echo $vars | sed -e "s/,/@$m,/g" -e "s/$/@$m/") fs=',' >> ${file};
+done
+```
+
 ## Statewide ETo Statistics
+
 
 The following table shows the average seasonal ETo for California.  
 <!---
@@ -70,3 +92,74 @@ OND       | -0.98 (Piru) | -0.07 | 0.36 (La Quinta)
 JFM       | -0.91 (Coalinga)  | -0.10 | 0.24 (Glendale)
 AMJ       | -1.63 (Piru) | -0.23 | 0.68 (Calipatria)
 JAS       | -1.54 (Piru) |  0.05 | 1.02 (Big Bear Lake)
+
+<!--
+-- To Add stations to the spreadsheet
+
+\COPY (select station_id,ymd,air_tmp_min,air_tmp_max,air_tmp_avg,dew_pnt,eto,asce_eto,precip,sol_rad_avg,sol_rad_net,wind_spd_avg,vap_pres_max,vap_pres_min,sol_rad_avg_qc from station join station_qc using (station_id,ymd) where '2004-10-01'::date <= ymd and ymd <= '2014-09-30'::date and station_id in (200) order by 1,2) to ~/Downloads/s200.csv with csv header^
+\COPY (select station_id,ymd,tn as air_tmp_min,tx as air_tmp_max,tdew as dew_pnt,rnl,u2 as wind_spd_avg,k as clear_sky_frac,sol_rad_avg,eto,fao_sol_rad_avg,fao_eto from raster where '2004-10-01'::date <= ymd and ymd <= '2014-09-30'::date and station_id in (200) order by 1,2) to ~/Downloads/r200.csv with csv header
+-->
+
+## Differences in Solar Radiation Calculations
+
+We have two different incoming solar radiation estimates, the heliosat
+method, and the FAO method, which is more simple, and does not include
+a turbidity estimate.  Turbidity is a problem in our calculations
+because we use a global estimate of turbidity for California. This dataset has not been updated for many years,
+and a potentially large source of error for our ETo estimates.   The FAO Evapotranspiration guidelines offer a more simple
+Radiation claculation, with a fixed turbidity factor.  We have compared the two estimates, and the table below shows
+that generally, the Heliosat (H) model outperforms the FAO (F) version for most stations.  However, about 10% of the stations 
+do fit better with the FAO method.   However, the AMJ season shows a slightly higher number of stations favoring the 
+FAO method as compared to the yearly summary.  Also, the nubmer of stations closer to the FAO in the later years of 
+the record  goes up slightly as well. 
+
+season |  ALL(H/F)  | 2014 (H/F)
+---- | --- | ---
+YR     | 152 / 14 | 136 / 8
+OND    | 159 /  5 | 130 / 15
+JFM    | 156 /  8 | 98 / 45
+AMJ    | 143 / 21 | 128 / 18
+JAS    | 153 / 13 | 132 / 11
+
+Investigation of the Linke Turbidity factor, the largeest factor affecting the difference in the two methods, seems to
+indicate that the larger the deviation from the mean turbidity factor the more likely the stations are to have a higher 
+error when compared to the measurements. This is the case for the lower values for turbidity, where the Heliosat method 
+predicts higher radiation, then measured by the station.  The trend is not so consistant with the higher turbidities, where 
+the Heliosat method is less likely to underpredict the station measurments.
+
+The overall takeaway message is probably that the Heliosat methods does a better job in predicting downwelling solar
+radiation, but the current turbiidty estimations are too coarse to properly model California's aerosols and water vapor, 
+and need to be updated with a newer method for calculating Linke turbidity.
+
+<!-- 
+```{sql}
+-- use=all or 2014
+\set use all 
+create or replace view b as
+with h as (
+ select * from regression
+ where parm='sol_rad_avg' and use=:'use'
+),f as (
+ select * from regression
+ where parm='fao_sol_rad_avg' and use=:'use'
+)
+select station_id,season,
+case when (h.rmse < f.rmse) THEN 'H' else 'F' end as best
+from h join f using (station_id,season);
+
+-- create CSV of best solar radiation match
+select * from
+crosstab('select * from b order by 1,2','select distinct season from b order by 1')
+as (station_id integer,yr char,ond char,jfm char,amj char,jas char);
+
+-- Overall count of best solar estimate.
+with a as (
+ select season,best,count(*) 
+ from b group by 1,2
+)
+select season,h.count as h,f.count as f 
+from a as h join a as f using (season)
+where h.best='H' and f.best='F';
+order by season
+```
+-->

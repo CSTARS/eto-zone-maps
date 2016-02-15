@@ -1,5 +1,7 @@
-.*~
+*~
 \#*\#
 .\#*
+
+**/appKey.mk
 fft/*.csv
-station_comparisons/json/*.json
+station_comparisons/input

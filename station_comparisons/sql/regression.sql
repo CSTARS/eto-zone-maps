@@ -1,3 +1,4 @@
+create type use_t as ENUM ('all','include','exclude','2014');
 create type seasons_t as ENUM ('YR','OND','JFM','AMJ','JAS');
 
 create or replace view seasons as
@@ -51,6 +52,26 @@ where y.%1$I is not null and
 x.%2$I is not null
 and q.%4$I in ('','K','Y','H')
 group by station_id,s.season$F$,y,x,use,qc) USING use;
+WHEN (use='2014') THEN
+RETURN QUERY EXECUTE format($F$select station_id,'%1$s'::text as parm,
+s.season as season,
+$1 as use,
+(sqrt(sum((y.%1$I-x.%2$I)^2))/count(*))::decimal(6,4) as rmse,
+regr_slope(y.%1$I,x.%2$I)::decimal(6,2) as slope,
+regr_intercept(y.%1$I,x.%2$I)::decimal(6,2) as intercept,
+regr_r2(y.%1$I,x.%2$I)::decimal(6,2) as r2,
+count(*)
+from station x
+join station_qc q using (station_id,ymd)
+join raster y
+using (station_id,ymd)
+join seasons s
+on (extract(month from ymd)=ANY(s.months))
+where y.%1$I is not null and
+x.%2$I is not null
+and q.%4$I in ('','K','Y','H')
+and '2013-09-30'::date < ymd and ymd < '2014-10-01'::date 
+group by station_id,s.season$F$,y,x,use,qc) USING use;
 WHEN (use='include') THEN
 RETURN QUERY EXECUTE format($F$select station_id,'%1$s'::text as parameter,
 s.season as season,
@@ -99,21 +120,14 @@ create or replace function add_to_regression()
 RETURNS bigint
 language sql as
 $$
-with a(y,x)  as (VALUES
-('eto','asce_eto'),
-('tn','air_tmp_min'),
-('tx','air_tmp_max'),
-('tdew','dew_pnt'),
-('u2','wind_spd_avg'),
-('rs','sol_rad_net')
-),
-b (u) as (
-  VALUES
-  ('all'::use_t),
-  ('include'::use_t))
---  ('exclude'::use_t),
+with a(y,x,u)  as (VALUES
+('eto','asce_eto','2014'),
+('sol_rad_avg','sol_rad_avg','2014'),
+('fao_eto','asce_eto','2014'),
+('fao_sol_rad_avg','sol_rad_avg','2014')
+)
 insert into regression
-select (add_regression(y,x,u)).* from a,b;
+select (add_regression(y,x,u::use_t)).* from a;
 select count(*) from regression;
 $$;
 
