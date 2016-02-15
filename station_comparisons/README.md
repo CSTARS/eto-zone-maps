@@ -32,7 +32,6 @@ done
 
 ## Statewide ETo Statistics
 
-
 The following table shows the average seasonal ETo for California.  
 <!---
 with t as (
@@ -52,7 +51,7 @@ from t join seasons using (season_id) order by year,"order";
 --->
 
 season_id | min | median | -1std | avg  | +1std |  max  | stddev
---- | ---
+--- | --- | --- | --- | --- | --- | --- | ---
 OND       |   0 |    1.9 |  0.87 | 2.07 |  3.27 |  9.97 |   1.20
 JFM       |   0 |   2.14 |  0.99 | 2.28 |  3.57 | 16.22 |   1.29
 AMJ       |   0 |   5.46 |  3.61 | 5.38 |  7.15 |  16.2 |   1.77
@@ -73,7 +72,7 @@ y2003 text,y2004 text,y2005 text,y2006 text,y2007 text,y2008 text,y2009 text,y20
 --->
 
 season_id |   2003    |   2004    |   2005    |   2006    |   2007    |   2008    |   2009    |   2010    |   2011    |   2012    |   2013    |   2014
---- | ---
+--- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
 OND       | 2.08+-1.28 | 1.86+-1.21 | 2.02+-1.22 | 2.04+-1.09 | 2.11+-1.16 | 2.15+-1.33 | 2.09+-1.18 | 1.86+-1.19 | 2.13+-1.10 | 2.03+-1.21 | 2.34+-1.13 |
 JFM       |            | 2.24+-1.41 | 1.89+-1.28 | 2.05+-1.05 | 2.44+-1.28 | 2.32+-1.35 | 2.34+-1.35 | 2.09+-1.36 | 2.15+-1.21 | 2.43+-1.17 | 2.52+-1.22 | 2.53+-1.28
 AMJ       |            | 5.61+-1.58 | 5.06+-1.73 | 4.85+-1.98 | 5.48+-1.72 | 5.58+-1.72 | 5.27+-1.71 | 5.16+-1.84 | 5.17+-1.78 | 5.53+-1.81 | 5.67+-1.71 | 5.77+-1.65
@@ -87,7 +86,7 @@ For each of these stations, we can compare the station measurements to those mea
 The average station error per season, as well as the minimum and maximum average differences are shown below.  On average, biases are small, with that greatest average bias being -0.25 mm/day for the AMJ season.  While the largest under prediction is almost consistently station Piru, the largest over prediction changes every season.  
 
 season_id |  under prediction   |  Average Bias |  Overprediction
---- | ---
+--- | --- | --- | ---
 OND       | -0.98 (Piru) | -0.07 | 0.36 (La Quinta)
 JFM       | -0.91 (Coalinga)  | -0.10 | 0.24 (Glendale)
 AMJ       | -1.63 (Piru) | -0.23 | 0.68 (Calipatria)
