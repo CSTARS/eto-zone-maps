@@ -1,3 +1,5 @@
+-- This is the script used to create our original 13 zones.
+-- We choose zones such that
 -- Prepare environment
 set search_path=fft,compare,public;
 select require_init();
@@ -13,6 +15,16 @@ refresh materialized view statewide_avg;
 
 -- final choice for weights
 \set w_id 3
+create table zones (
+zone_id serial primary key,
+zone text,
+weight_id integer references weights,
+e float[],
+d float[],
+et float[52],
+unique(zone,weight_id)
+);
+
 truncate zones restart identity cascade;
 insert into zones (zone,weight_id,e,d,et)
 select 'statewide',:w_id,e,d,ifft(e,d,52) as et

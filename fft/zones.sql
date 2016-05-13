@@ -120,7 +120,7 @@ a as (
  select zone_id,e0,e1,e2,d1,d2,
  array_avg(ETo::numeric[])::float[] as ETo
  from error_clusters($1,$2,1) e
- join cluster c  using (zone_id,e0,e1,e2,d1,d2)
+ join cluster(0) c  using (zone_id,e0,e1,e2,d1,d2)
  join raster_15avg r using (pid)
  where c.rmse>$1
  and type='h'

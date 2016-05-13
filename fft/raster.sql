@@ -67,7 +67,8 @@ from statewide_avg,unnest(ETo) as et0;
 -- This is a test function to see if we can import a raster from a table of data.
 create or replace function raster_template ()
 returns public.raster as $$
-select ST_AddBand(ST_setsrid(ST_MakeEmptyRaster( 510, 560, -410000,460000, 2000),3310),1, '8BUI', 0, 0);
+select ST_setsrid(ST_MakeEmptyRaster( 510, 560, -410000,460000, 2000),3310);
+--select ST_AddBand(ST_setsrid(ST_MakeEmptyRaster( 510, 560, -410000,460000, 2000),3310),1, '8BUI', 0, 0);
 $$ LANGUAGE SQL IMMUTABLE;
 
 create table cimis_pixels (pid serial primary key,x integer,y integer,east integer,north integer);
@@ -101,10 +102,30 @@ i integer;
 BEGIN
 rast := raster_template();
 FOR i in select zone_id from zones order by zone_id LOOP
- rast:= ST_addBand(rast,rast,i,i);
+ rast:= CASE WHEN (i=1) THEN ST_AddBand(rast,1, '8BUI', 0, 0) ELSE ST_addBand(rast,rast,i-1,i) END;
  select into pixels array_agg((pid,zone_id)::pixel_t) from zone_rmse_min(i) where zone_id=i;
- rast:= fill_raster(rast,i+1,pixels);
+ rast:= fill_raster(rast,i,pixels);
 END LOOP;
 return rast;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION move_zones_to_raster()
+RETURNS public.raster
+AS $$
+DECLARE
+rast public.raster;
+pixels pixel_t[];
+i integer;
+BEGIN
+rast := raster_template();
+FOR i in select zone_id from zones order by zone_id LOOP
+ rast:= ST_AddBand(rast,i, '8BUI', 0, 0);
+ select into pixels array_agg((pid,zone_id)::pixel_t) from total_move_rmse_min where zones=i;
+ rast:= fill_raster(rast,i,pixels);
+END LOOP;
+return rast;
+END;
+$$ LANGUAGE plpgsql;
+
+-- gdal_translate -of GTiff "PG:dbname=eto_zones schema=avg_0625 table=raster" zones.tif
