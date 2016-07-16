@@ -129,3 +129,23 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- gdal_translate -of GTiff "PG:dbname=eto_zones schema=avg_0625 table=raster" zones.tif
+
+CREATE OR REPLACE FUNCTION yearly_zones_to_raster()
+RETURNS public.raster
+AS $$
+DECLARE
+rast public.raster;
+pixels pixel_t[];
+i integer;
+BEGIN
+rast := raster_template();
+FOR i in select generate_series(1,14) LOOP
+ rast:= ST_AddBand(rast,i, '8BUI', 0, 0);
+ select into pixels array_agg((pid,zone_id)::pixel_t) from yearly_rmse_min where year=2003+i;
+ rast:= fill_raster(rast,i,pixels);
+END LOOP;
+return rast;
+END;
+$$ LANGUAGE plpgsql;
+
+-- gdal_translate -of GTiff "PG:dbname=eto_zones schema=avg_0625 table=raster" yearly.tif
