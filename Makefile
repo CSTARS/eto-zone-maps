@@ -8,7 +8,7 @@ geojson/original_zones.geojson: src/original_zones.vrt
 
 # Here's an Example of materializing that VRT file, for example to
 # upload to Google Maps.
-shp: src/original_zones.vrt
+shp:: src/original_zones.vrt
 	ogr2ogr $@ $<
 
 original_zones.csv: src/original_zones.vrt
@@ -17,3 +17,13 @@ original_zones.csv: src/original_zones.vrt
 
 original_zones_each.csv: src/original_zones.vrt
 	psql service=eto_zones -c '\COPY (with b as (select definition,st_asKML(wkb_geometry) as boundary from original_zones) select num,definition,boundary from zone_nums join b using (definition)) to $@ with csv header'
+
+shp/final_zones.shp:src/final_zones.vrt
+	ogr2ogr $@ $<
+
+eto_zones.geojson: src/final_zones.vrt
+	ogr2ogr -f GEOJSON  -t_srs WGS84 $@ $<
+
+postgis: shp/final_zones.shp
+	shp2pgsql -s 3310 -d $< |  ${PG}
+

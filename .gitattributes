@@ -1,2 +1,14 @@
 *.tif binary
-*.mp4 binay
+*.mp4 binay export-ignore
+Makefile export-ignore
+.git* export-ignore
+*.sql export-ignore
+*.mk export-ignore
+classifications/ export-ignore
+fft/ export-ignore
+earthengine/ export-ignore
+shp/ export-ignore
+src/ export-ignore
+station_comparisons/ export-ignore
+tif/ export-ignore
+zone_nums.csv export-ignore
