@@ -32,7 +32,8 @@ done
 
 ## Statewide ETo Statistics
 
-The following table shows the average seasonal ETo for California.  
+The following table shows the average seasonal ETo for California.
+
 <!---
 with t as (
   select extract(year from ymd) as year,s.season_id,
@@ -60,7 +61,19 @@ JAS       |   0 |   5.48 |  3.96 | 5.46 |  6.96 | 20.22 |   1.50
 Yearly variation of the seaonal averages from the California stations can be pretty significant.  Remember, this is representative of the CIMIS stations, which are not an accurate representation of California in general.
 
 <!---
-create temp view yearly_avg as with t as (select extract(year from ymd) as  year,s.season_id,(avg(eto))::decimal(6,2),min(eto),max(eto),(stddev(eto))::decimal(6,2),median(eto::numeric),count(*) from station join station_qc using (id,ymd) join seasons s on (extract(month from ymd) = ANY(months)) where eto_qc='' group by extract(year from ymd),season_id) select season_id,year,(avg||'+-'||stddev)::text as avg from t join seasons using (season_id) order by "order",year;
+create temp view yearly_avg as
+with t as (
+ select extract(year from ymd) as  year,s.season_id,
+ (avg(eto))::decimal(6,2),min(eto),max(eto),
+ (stddev(eto))::decimal(6,2),median(eto::numeric),count(*)
+ from station join station_qc using (id,ymd)
+ join seasons s on (extract(month from ymd) = ANY(months))
+ where eto_qc=''
+ group by extract(year from ymd),season_id
+)
+select season_id,year,(avg||'+-'||stddev)::text as avg
+from t join seasons using (season_id)
+order by "order",year;
 
 select * from crosstab(
 'select * from yearly_avg',
@@ -81,36 +94,75 @@ JAS       |            | 5.54+-1.41 | 5.42+-1.54 | 5.35+-1.47 | 5.39+-1.48 | 5.4
 
 ## Station Differences
 
-For each of these stations, we can compare the station measurements to those measurments as calculated by the Spatial CIMIS program.  We can do this if the following ways.  First, for each station, and for each season, we can calculate what the average difference in the Spatial CIMIS data as compared to the Station calculated data.  This will show us any overall bias in the maps.  When we do this we only include the station data used in the calculation of the ETo maps in the Spatial CIMIS dataset.
+For each of these stations, we can compare the station measurements
+to those measurements as calculated by the Spatial CIMIS program. We
+can do this the following ways. First, for each station, and for
+each season, we can calculate what the average difference in the
+Spatial CIMIS data as compared to the station calculated data. This
+will show us any overall bias in the maps. When we do this we only
+include the station data used in the calculation of the ETo maps in
+the Spatial CIMIS dataset.
 
-The average station error per season, as well as the minimum and maximum average differences are shown below.  On average, biases are small, with that greatest average bias being -0.25 mm/day for the AMJ season.  While the largest under prediction is almost consistently station Piru, the largest over prediction changes every season.  
+The average station error per season, as well as the minimum and
+maximum average differences are shown below. On average, biases are
+small, with that greatest average bias being -0.25 mm/day for the
+AMJ season. While the largest under prediction is almost
+consistently station Piru, the largest over prediction changes every
+season.
 
-season_id |  under prediction   |  Average Bias |  Overprediction
---- | --- | --- | ---
-OND       | -0.98 (Piru) | -0.07 | 0.36 (La Quinta)
-JFM       | -0.91 (Coalinga)  | -0.10 | 0.24 (Glendale)
-AMJ       | -1.63 (Piru) | -0.23 | 0.68 (Calipatria)
-JAS       | -1.54 (Piru) |  0.05 | 1.02 (Big Bear Lake)
+season_id | under prediction | Average Bias | Overprediction
+--- | --- | --- |---
+OND | -0.98 (Piru) | -0.07 | 0.36 (La Quinta)
+JFM | -0.91 (Coalinga) | -0.10 | 0.24 (Glendale)
+AMJ | -1.63 (Piru) | -0.23 | 0.68 (Calipatria)
+JAS | -1.54 (Piru) | 0.05 | 1.02 (Big Bear Lake)
 
 <!--
--- To Add stations to the spreadsheet
+-- To Add stations to the spreadsheet for Calculations
 
-\COPY (select station_id,ymd,air_tmp_min,air_tmp_max,air_tmp_avg,dew_pnt,eto,asce_eto,precip,sol_rad_avg,sol_rad_net,wind_spd_avg,vap_pres_max,vap_pres_min,sol_rad_avg_qc from station join station_qc using (station_id,ymd) where '2004-10-01'::date <= ymd and ymd <= '2014-09-30'::date and station_id in (200) order by 1,2) to ~/Downloads/s200.csv with csv header^
-\COPY (select station_id,ymd,tn as air_tmp_min,tx as air_tmp_max,tdew as dew_pnt,rnl,u2 as wind_spd_avg,k as clear_sky_frac,sol_rad_avg,eto,fao_sol_rad_avg,fao_eto from raster where '2004-10-01'::date <= ymd and ymd <= '2014-09-30'::date and station_id in (200) order by 1,2) to ~/Downloads/r200.csv with csv header
+create temp view to_s as
+select
+ station_id,ymd,
+ air_tmp_min,air_tmp_max,air_tmp_avg,dew_pnt,
+ eto,asce_eto,precip,sol_rad_avg,sol_rad_net,
+ wind_spd_avg,vap_pres_max,vap_pres_min,sol_rad_avg_qc
+from station join station_qc using (station_id,ymd)
+where '2004-10-01'::date <= ymd
+and ymd <= '2014-09-30'::date
+and station_id in (200) order by 1,2;
+
+\COPY (select * from to_s) to ~/Downloads/s200.csv with csv header
+
+create temp view to_r as
+select
+station_id,ymd,
+tn as air_tmp_min,tx as air_tmp_max,tdew as dew_pnt,
+rnl,u2 as wind_spd_avg,
+k as clear_sky_frac,sol_rad_avg,
+eto,fao_sol_rad_avg,fao_eto
+from raster
+where '2004-10-01'::date <= ymd and ymd <= '2014-09-30'::date
+and station_id in (200) order by 1,2;
+
+
+\COPY (select * from to_r) to ~/Downloads/r200.csv with csv header
 -->
 
 ## Differences in Solar Radiation Calculations
 
-We have two different incoming solar radiation estimates, the heliosat
-method, and the FAO method, which is more simple, and does not include
-a turbidity estimate.  Turbidity is a problem in our calculations
-because we use a global estimate of turbidity for California. This dataset has not been updated for many years,
-and a potentially large source of error for our ETo estimates.   The FAO Evapotranspiration guidelines offer a more simple
-Radiation claculation, with a fixed turbidity factor.  We have compared the two estimates, and the table below shows
-that generally, the Heliosat (H) model outperforms the FAO (F) version for most stations.  However, about 10% of the stations 
-do fit better with the FAO method.   However, the AMJ season shows a slightly higher number of stations favoring the 
-FAO method as compared to the yearly summary.  Also, the nubmer of stations closer to the FAO in the later years of 
-the record  goes up slightly as well. 
+We have two different incoming solar radiation estimates, the heliosat method,
+and the FAO method, which is more simple, and does not include a turbidity
+estimate. Turbidity is a problem in our calculations because we use a global
+estimate of turbidity for California. This dataset has not been updated for many
+years, and a potentially large source of error for our ETo estimates. The FAO
+Evapotranspiration guidelines offer a more simple Radiation claculation, with a
+fixed turbidity factor. We have compared the two estimates, and the table below
+shows that generally, the Heliosat (H) model outperforms the FAO (F) version for
+most stations. However, about 10% of the stations do fit better with the FAO
+method. However, the AMJ season shows a slightly higher number of stations
+favoring the FAO method as compared to the yearly summary. Also, the nubmer of
+stations closer to the FAO in the later years of the record goes up slightly as
+well.
 
 season |  ALL(H/F)  | 2014 (H/F)
 ---- | --- | ---
@@ -120,20 +172,25 @@ JFM    | 156 /  8 | 98 / 45
 AMJ    | 143 / 21 | 128 / 18
 JAS    | 153 / 13 | 132 / 11
 
-Investigation of the Linke Turbidity factor, the largeest factor affecting the difference in the two methods, seems to
-indicate that the larger the deviation from the mean turbidity factor the more likely the stations are to have a higher 
-error when compared to the measurements. This is the case for the lower values for turbidity, where the Heliosat method 
-predicts higher radiation, then measured by the station.  The trend is not so consistant with the higher turbidities, where 
-the Heliosat method is less likely to underpredict the station measurments.
+Investigation of the Linke Turbidity factor, the largest factor affecting the
+difference in the two methods, seems to indicate that the larger the deviation
+from the mean turbidity factor the more likely the stations are to have a higher
+error when compared to the measurements. This is the case for the lower values
+for turbidity, where the Heliosat method predicts higher radiation, then
+measured by the station. The trend is not so consistant with the higher
+turbidities, where the Heliosat method is less likely to underpredict the
+station measurments.
 
-The overall takeaway message is probably that the Heliosat methods does a better job in predicting downwelling solar
-radiation, but the current turbiidty estimations are too coarse to properly model California's aerosols and water vapor, 
-and need to be updated with a newer method for calculating Linke turbidity.
+The overall takeaway message is probably that the Heliosat methods does a better
+job in predicting downwelling solar radiation, but the current turbidity
+estimations are too coarse to properly model California's aerosols and water
+vapor, and need to be updated with a newer method for calculating Linke
+turbidity.
 
-<!-- 
+<!--
 ```{sql}
 -- use=all or 2014
-\set use all 
+\set use all
 create or replace view b as
 with h as (
  select * from regression
@@ -153,10 +210,10 @@ as (station_id integer,yr char,ond char,jfm char,amj char,jas char);
 
 -- Overall count of best solar estimate.
 with a as (
- select season,best,count(*) 
+ select season,best,count(*)
  from b group by 1,2
 )
-select season,h.count as h,f.count as f 
+select season,h.count as h,f.count as f
 from a as h join a as f using (season)
 where h.best='H' and f.best='F';
 order by season

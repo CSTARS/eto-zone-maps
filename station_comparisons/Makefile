@@ -33,6 +33,10 @@ INFO:
 station.json:
 	curl http://et.water.ca.gov/api/station > $@
 
+station.csv: station.json
+	jq -r '.Stations[] | [.StationNbr, .Name, .City, .County, .ConnectDate, .DisconnectDate, .IsActive, .IsEtoStation, .Elevation, .GroundCover, [.HmsLongitude, .HmsLatitude | split("/ ")[1]][]] | @csv' < $< > $@
+
+
 targets.mk: station.json
 	(echo -n "targets:="; jq -r '.Stations[] | "\(.StationNbr)-\(.Name)" ' < station.json | tr [:upper:] [:lower:]  | tr -s '[:punct:] ' _ | sed -e 's/^\(.\)_/0\1_/' -e 's/^\(..\)_/0\1_/' | tr '\n' ' ') > $@
 

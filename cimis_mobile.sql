@@ -32,7 +32,7 @@ create temp table dau_pixel_area as
 select pid,dau_code,
 st_area(st_intersection(p.boundary,d.wkb_geometry)) as area
 from cimis_boundary p
-join detailed_analysis_units d on st_intersects(p.boundary,d.wkb_geometry);
+join dauco d on st_intersects(p.boundary,d.wkb_geometry);
 
 create view json_index as with a as (
 select pid,

@@ -47,10 +47,6 @@ return fft.cum_et(e,d,day);
 $$ LANGUAGE plv8 IMMUTABLE STRICT;
 
 
---CREATE OR REPLACE FUNCTION foo(wa whisker[]) RETURNS text AS $$
---return foo(wa);
---$$ LANGUAGE plv8 IMMUTABLE STRICT;
-
 CREATE or replace function init_injector(prefix text,js text)
 RETURNS TEXT
 LANGUAGE PLPGSQL AS $PL$

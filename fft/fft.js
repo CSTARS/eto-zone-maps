@@ -51,7 +51,7 @@ var fft = function(et) {
 	    break;
 	case 1:
 	    D[i]=(365 - 365/(2*Math.PI)*Math.atan2(im[i],re[i])) % 365;
-	    E[i]=2*Math.sqrt(Math.pow(re[i],2)+
+     E[i]=2*Math.sqrt(Math.pow(re[i],2)+
 			   Math.pow(im[i],2))/N;
 	    break;
 	default:
@@ -67,7 +67,7 @@ var fft = function(et) {
     }
     return({e:E,d:D,re:re,im:im});
 };
-    
+
 module.exports = {
     statewide:statewide,
     fft:fft,
