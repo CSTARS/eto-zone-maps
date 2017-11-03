@@ -1,0 +1,27 @@
+* ETo modifications
+
+I have been having a long term back and forth with DWR on the best possible
+method to include the cimis station 15day data into the ETo Zone Maps.  We have
+had multiple discussions on what the best method to do this would be.  Bekele
+has wanted to modify the ETo zone map values to include the ETo Station data. I
+have been resistant to that, since I only thought it confused matters.
+
+Recently, I've had a bit of an epiphany about how we might go about this.  Since
+we have the ETo parameters for both the Stations, and for the underlying raster
+data, what we can do is to calculate what the ratio is between the different
+parameters that make up the ETo simplification.  That is, we can create ratios
+between the p0, p0 and H0 values. We can then use a spline fit to spread these
+ratios across all of CA. Using these updated values, we can then create a new
+zone map, that uses these values to calculate the best fit for each zone.  From
+that, we can then look at where the zones differ, and use that as an estimation
+of where we are unclear about the estimations of ET from our station
+perturbations.
+
+I think this is a superior method for a number of reasons.  First, we can
+compare to maps to really see where the differences of the two methods are, and
+Secondly, if we really want to estimate something like the total change in ETo
+from the two methods, then we can use these estimates way more reliably.  (In
+fact, we can just look at the p0 maps :)
+
+We used to station estimates, the station_* tables and the cimis_15day_* tables.
+We will use the cimis_15day_* tables to do this test.

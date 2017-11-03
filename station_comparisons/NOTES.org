@@ -1,5 +1,3 @@
-5 40 55 72 77 99
-
 
 * Mistaken Station Locations
 
@@ -996,3 +994,19 @@ SELECT 134
 
  #+RESULTS:
  CREATE VIEW
+
+* Display
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+create table
+public.cimis_15day_zone_map as
+select
+station_id,
+st_transform(st_setsrid(st_makepoint(longitude,latitude),4269),3310) as centroid,
+moved as via_spatial,
+best as via_station,
+case when (moved=best) then true else false end as match
+from station_info join cimis_15day_best_zone_in_zones using (station_id)
+where zones=16;

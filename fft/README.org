@@ -1,0 +1,70 @@
+* Raster FFT's
+
+The first step in summarizing California's ETo zones is to get the long term
+summary of ETo for every pixel in California.  This is what will be used to
+later classify the State's information.  We basically use all the data  up
+through the the end of the 2015 water year.  That basically means the 2004-2015
+water years, but we also include any data we have for water year 2003, which is
+pretty light.
+
+** Raster 15 day averages.
+
+The parameter of interest is the 15day average ETo value.  The calcuation of
+these 15 day averages come directly from the Spatial CIMIS data.  In fact the
+calculation of the averages is a part of the spatial CIMIS program, only it's
+not calculated by default.
+
+Additionally, since the 15 day average is a low pass filter over the daily data,
+we can also recover the complete yearly signal by sampling the data at a weekly
+step. This is twice the frequency of the 15 day signal.  In our calculations, we
+extracat the 15 day average then, only at a set number of dates.  The dates do
+not change for leap years.  Also, because DWR typically arranges water
+information by water-year we also order the dates by water year.  This doesn't
+have any real affect on the transform. The dates are;
+
+#+BEGIN_SRC bash
+for i in `seq 0 51`; do
+  let d=3+i*7;
+  md=`date --date="2015-10-01 + $d days" +%m-%d`;
+  echo -n "$md "; done
+#+END_SRC
+
+#+RESULTS:
+10-04 10-11 10-18 10-25 11-01 11-08 11-15 11-22 11-29 12-06 12-13 12-20 12-27
+01-04 01-11 01-18 01-25 02-01 02-08 02-15 02-22 03-01 03-08 03-15 03-22 03-29
+04-05 04-12 04-19 04-26 05-03 05-10 05-17 05-24 05-31 06-07 06-14 06-21 06-28
+07-05 07-12 07-19 07-26 08-02 08-09 08-16 08-23 08-30 09-06 09-13 09-20 09-27
+
+To calculate the 15 day averages within spatial CIMIS  you need to run a special
+command on these dates.  For example, if you'd like to calculate all the ETo
+values you need, you run something like this: [[https://github.com/CSTARS/eto-zone-maps/issues/5][See Issue #5]].
+
+#+BEGIN_SRC
+md='10-04 10-11 10-18 10-25 11-01 11-8 11-15 11-22 11-29 12-06 12-13 12-20 12-27
+01-04 01-11 01-18 01-25 02-01 02-08 02-15 02-22 03-01 03-08 03-15 03-22 03-29
+04-05 04-12 04-19 04-26 05-03 05-10 05-17 05-24 05-31 06-07 06-14 06-21 06-28
+07-05 07-12 07-19 07-26 08-02 08-09 08-16 08-23 08-30 09-06 09-13 09-20 09-27';
+
+for y in `seq 2004 2015`; do
+ for i in $md; do
+  if (g.mapset ${y}-${i}); then
+    # We can also calculate ETo,K and this command also calculates the max and min values.
+    cg sec=long_term_avg cmd=ETo_15avg;
+  else
+    echo ${y}-${i} not found; fi ;
+  done;
+done
+#+END_SRC
+
+We then imported all this data into the `fft.raster_stats` table. This table has
+every pixel for every one of the dates above, for each year we are including.
+Note, we might have used postgres rasters for this computation, but the
+calculations we do on this are kind of a pain to use with the raster data.  In
+fact, we very quickly convert this data. We calculate the average value for each
+of the month-day parameters, and then create a single 52 value array assigned
+one for each pixel.  This is the `fft.raster_15avg` table.  You can see the
+
+#+BEGIN_SRC postgres
+
+
+#+END_SRC
