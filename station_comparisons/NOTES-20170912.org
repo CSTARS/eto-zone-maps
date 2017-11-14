@@ -24,4 +24,126 @@ from the two methods, then we can use these estimates way more reliably.  (In
 fact, we can just look at the p0 maps :)
 
 We used to station estimates, the station_* tables and the cimis_15day_* tables.
-We will use the cimis_15day_* tables to do this test.
+The cimis_15day tables from the [[file:NOTES.org::*DWR%20Long%20term%20average][DWR Long term average]] data, and their
+calcutations.  This is the data that we want to use.  The FFT values for the
+stations is compare.cimis_15day_fft, as defined in [[file:NOTES.org::*Station%20FFT][Station FFT]].
+
+ #+header: :engine postgresql
+ #+header: :database eto_zones
+ #+BEGIN_SRC sql :results raw
+ select fft.require_fft();
+select * from compare.cimis_15day_fft
+limit 4;
+ #+END_SRC
+
+ #+RESULTS:
+ station_id	p0	p1	h1	p2	h2
+ 2	4.377	3.368	270	-0.098	-17.585
+ 5	3.907	2.918	269	-0.118	-36.357
+ 6	3.975	2.992	272	-0.033	-33.617
+ 7	3.846	3.041	269	-0.061	-19.140
+
+Super! okay we need the same data for the data from the Spatial CIMIS.  Well it
+turns out we already have this data (at least the raw eto data) in the file
+compare.ymd15.  This reads in data that was exported from the spatial cimis
+data.  So we just need to calculate the station fft data (which we already have
+somewhere, but we can calculate here.  Similar to the cimis_15day_fft, we'll
+calculat the compare.raster_station_fft as :
+
+ #+header: :engine postgresql
+ #+header: :database eto_zones
+ #+BEGIN_SRC sql :results raw
+select fft.require_fft();
+create view compare.ymd15_avg_fft as
+with v as (
+ select station_id,m,d,
+ count(*) as count,
+ avg(r_eto) as r_eto,
+ avg(s_eto) as s_eto
+ from compare.ymd15
+ join compare.avg_dates using (ymd)
+ group by station_id,m,d
+),
+e as (
+ select station_id,
+ fft(array_agg(r_eto order by case when (m<10) then m+12 else m end)) as r_eto,
+ fft(array_agg(s_eto order by case when (m<10) then m+12 else m end)) as s_eto
+ from v
+ group by station_id
+)
+select station_id,
+(r_eto).e[1]::decimal(6,3) as r_p0,
+(r_eto).e[2]::decimal(6,3) as r_p1,
+(r_eto).d[2]::integer as r_h1,
+--(r_eto).e[3]::decimal(6,3) as r_p2,
+--(r_eto).d[3]::decimal(6,3) as r_h2,
+(s_eto).e[1]::decimal(6,3) as s_p0,
+(s_eto).e[2]::decimal(6,3) as s_p1,
+(s_eto).d[2]::integer as s_h1
+--(s_eto).e[3]::decimal(6,3) as s_p2,
+--(s_eto).d[3]::decimal(6,3) as s_h2
+from e;
+#+END_SRC
+
+ #+RESULTS:
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+create or replace view compare.cimis_15day_vs_spatial_fft_ratio as
+select
+station_id,
+(s.p0/y.r_p0)::decimal(6,3) as p0_ratio,
+(y.s_p0/y.r_p0)::decimal(6,3) as cimis_p0,
+(s.p1/y.r_p1)::decimal(6,3) as p1_ratio
+from compare.cimis_15day_fft s
+join compare.ymd15_avg_fft y
+using (station_id)
+order by p0_ratio;
+#+END_SRC
+
+#+RESULTS:
+CREATE VIEW
+CREATE VIEW
+
+
+** Grass Processing
+
+In order to use our spline fitting routine from grass, we need to export the
+data into a CSV file for import into grass.
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+select fft.require_fft();
+create temp view foo as
+select
+ station_id,st_x,st_y,i.elevation*0.3048 as z,
+ p0_ratio,p1_ratio
+from compare.cimis_15day_vs_spatial_fft_ratio join compare.station_info i using (station_id)
+join compare.station_xy using (station_id);
+\COPY (select * from foo order by station_id) to ~/spatial_station_ratio.csv with csv
+#+END_SRC
+
+#+RESULTS:
+require_fft
+
+CREATE VIEW
+COPY 153
+
+
+#+BEGIN_SRC bash
+v.in.ascii --overwrite x=2 y=3 z=4 input=spatial_station_ratio.csv output=ratio format=point separator=, \
+columns='station_id int,x double precision,y double precision,z double precision, p0_ratio double precision,p1_ratio double precision'
+#+END_SRC
+
+We are going to replicate the same spline values that we use for the daily wind
+speed.  These can be found in the spline.mk file of the Spatial CIMIS
+calculation.
+
+#+BEGIN_SRC bash
+g.region -d b=-100 t=2500 tbres=1000;
+v.vol.rst --overwrite input=ratio wcolumn=p0_ratio cross_input=Z@2km maskmap=state@2km \
+  tension=5 zscale=30 smooth=0.05 cross_output=p0_r_t5_z30_s05 dmin=5
+g.region -d
+#+END_SRC
