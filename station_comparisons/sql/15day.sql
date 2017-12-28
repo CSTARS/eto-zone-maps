@@ -34,9 +34,10 @@ and ymd <= (format('%s-%s-%s',y,m,d))::date + '7 days'::interval);
 create index raster_ymd on raster(ymd);
 create index avg_dates_ymd on avg_dates(ymd);
 
+-- One 2017-11-26, I altered this command, and renamed ymd back to ymd15, do avoid confusion.
 create materialized view ymd15 as
 select station_id,
-ymd15 as ymd,
+ymd15 as ymd15,
 count(*) as count,
 avg(s.eto)::decimal(6,2) as s_eto,
 avg(r.eto)::decimal(6,2) as r_eto,
@@ -47,6 +48,7 @@ join avg_dates using (ymd)
 where s.eto is not null
 and r.eto is not null
 group by station_id,ymd15;
+
 
 create materialized view md15 as
 select station_id,
@@ -64,16 +66,16 @@ whisker(k::numeric) as k_w
 from raster join avg_dates using (ymd)
 group by station_id,m,d;
 
-create view compare15_avg as
-select station_id,
-m,d,
-count(*) as count,
-whisker(r_eto::numeric) as r_eto_w,
-whisker(s_eto::numeric) as s_eto_w,
-whisker(sdiffr_eto::numeric) as sdiffr_eto_w
-from ymd15
-join avg_dates using (ymd)
-group by station_id,m,d;
+-- create view compare15_avg as
+-- select station_id,
+-- m,d,
+-- count(*) as count,
+-- whisker(r_eto::numeric) as r_eto_w,
+-- whisker(s_eto::numeric) as s_eto_w,
+-- whisker(sdiffr_eto::numeric) as sdiffr_eto_w
+-- from ymd15
+-- join avg_dates using (ymd)
+-- group by station_id,m,d;
 
 create materialized view compare15 as
 select station_id,
