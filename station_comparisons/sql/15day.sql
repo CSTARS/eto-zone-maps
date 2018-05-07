@@ -50,6 +50,34 @@ and r.eto is not null
 group by station_id,ymd15;
 
 
+create materialized view ymd15_station_raster as
+select station_id, ymd15, count(*) as count,
+avg(eto) as eto_r,whisker(eto::numeric) as eto_rw,
+avg(tn) as tn_r,whisker(tn::numeric) as tn_rw,
+avg(tx) as tx_r,whisker(tx::numeric) as tx_rw,
+avg(tdew) as tdew_r,whisker(tdew::numeric) as tdew_rw,
+avg(rs) as rs_r,whisker(rs::numeric) as rs_rw,
+avg(rso) as rso_r,whisker(rso::numeric) as rso_rw,
+avg(rnl) as rnl_r,whisker(rnl::numeric) as rnl_rw,
+avg(u2) as u2_r,whisker(u2::numeric) as u2_rw,
+avg(k) as k_r,(whisker(k::numeric) as k_rw
+from raster join avg_dates using (ymd)
+group by station_id,m,d;
+full outer join
+select station_id, ymd15, count(*) as count,
+avg(asce_eto) as eto_r,whisker(asce_eto::numeric) as eto_rw,
+avg(air_tmp_min) as tn_r,whisker(air_tmp_min::numeric) as tn_rw,
+avg(air_tmp_max) as tx_r,whisker(air_tmp_max::numeric) as tx_rw,
+avg(dew_tmp) as tdew_r,whisker(dew_tmp::numeric) as tdew_rw,
+avg(solrad_net) as rs_r,whisker(solrad_net::numeric) as rs_rw,
+--avg(rso) as rso_r,hisker(rso::numeric) as rso_rw,
+--avg(rnl) as rnl_r,whisker(rnl::numeric) as rnl_rw,
+avg(wind_speed_avg) as u2_r,whisker(wind_speed_avg::numeric) as u2_rw,
+avg(k) as k_r,(whisker(k::numeric) as kr_w
+from station join avg_dates using (ymd)
+group by station_id,m,d;
+
+
 create materialized view md15 as
 select station_id,
 m,d,

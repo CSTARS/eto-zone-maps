@@ -1,0 +1,427 @@
+** Calculating what parameter leads to our differences
+
+This section shows the steps, I've taken to try and determine which parameter
+leads to the differences in our eto zone calculations.
+
+*** whisker plots
+
+The first order of business is to calcuate whisker plots for every parameter
+used for ETo calculation. We are getting these for both the station data, and
+the raster data.  In addition to the whisker plots, we take the average as well.
+We take this for the complete history of our study.
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+set search_path=compare,catalogs,public;
+
+create materialized view ymd15_station_raster_whisker as
+with r as (
+select station_id, ymd15, count(*) as r_count,
+avg(eto) as eto_r,whisker(eto::numeric) as eto_rw,
+avg(tn) as tn_r,whisker(tn::numeric) as tn_rw,
+avg(tx) as tx_r,whisker(tx::numeric) as tx_rw,
+avg(tdew) as tdew_r,whisker(tdew::numeric) as tdew_rw,
+avg(rs) as rs_r,whisker(rs::numeric) as rs_rw,
+avg(rso) as rso_r,whisker(rso::numeric) as rso_rw,
+avg(rnl) as rnl_r,whisker(rnl::numeric) as rnl_rw,
+avg(u2) as u2_r,whisker(u2::numeric) as u2_rw,
+avg(k) as k_r,whisker(k::numeric) as k_rw
+from raster join avg_dates using (ymd)
+group by station_id,ymd15),
+s as (
+select station_id, ymd15, count(*) as s_count,
+avg(asce_eto) as eto_s,whisker(asce_eto::numeric) as eto_sw,
+avg(air_tmp_min) as tn_s,whisker(air_tmp_min::numeric) as tn_sw,
+avg(air_tmp_max) as tx_s,whisker(air_tmp_max::numeric) as tx_sw,
+avg(dew_pnt) as tdew_s,whisker(dew_pnt::numeric) as tdew_sw,
+avg(sol_rad_avg*24*0.0036) as rs_s,whisker((sol_rad_avg*24*0.0036)::numeric) as rs_sw,
+--avg(rso) as rso_s,hisker(rso::numeric) as rso_sw,
+--avg(rnl) as rnl_s,whisker(rnl::numeric) as rnl_sw,
+avg(wind_spd_avg) as u2_s,whisker(wind_spd_avg::numeric) as u2_sw
+--avg(k) as k_r,(whisker(k::numeric) as kr_w
+from station join avg_dates using (ymd)
+group by station_id,ymd15
+),
+l as (
+select station_id,ymd15,
+avg(eto) as eto_lt,whisker(eto::numeric) as eto_ltw
+from lt_15day join
+(select ymd15,extract(doy from ymd) as doy from avg_dates) as d
+using(doy)
+group by station_id,ymd15
+),
+j as (
+select * from r full outer join s
+using (station_id,ymd15)
+full outer join l
+using (station_id,ymd15)
+)
+select j.*,s.elevation/3.28084 as z from j join station_info s using (station_id);
+ #+END_SRC
+
+ #+RESULTS:
+ SET
+ SELECT 156000
+
+*** Average Whisker Plot
+
+In addition to this, we also take the overall average, and whisker plot over all
+the years.  This is what we use to make our comparisions between the lt, the
+station, and the raster measurements.
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+set search_path=compare,catalogs,public;
+
+create materialized view station_raster_whisker as
+with r as (
+select station_id,m,d, count(*) as r_count,
+avg(eto) as eto_r,whisker(eto::numeric) as eto_rw,
+avg(tn) as tn_r,whisker(tn::numeric) as tn_rw,
+avg(tx) as tx_r,whisker(tx::numeric) as tx_rw,
+avg(tdew) as tdew_r,whisker(tdew::numeric) as tdew_rw,
+avg(rs) as rs_r,whisker(rs::numeric) as rs_rw,
+avg(rso) as rso_r,whisker(rso::numeric) as rso_rw,
+avg(rnl) as rnl_r,whisker(rnl::numeric) as rnl_rw,
+avg(u2) as u2_r,whisker(u2::numeric) as u2_rw,
+avg(k) as k_r,whisker(k::numeric) as k_rw
+from raster join avg_dates using (ymd)
+group by station_id,m,d),
+s as (
+select station_id, m,d, count(*) as s_count,
+avg(asce_eto) as eto_s,whisker(asce_eto::numeric) as eto_sw,
+avg(air_tmp_min) as tn_s,whisker(air_tmp_min::numeric) as tn_sw,
+avg(air_tmp_max) as tx_s,whisker(air_tmp_max::numeric) as tx_sw,
+avg(dew_pnt) as tdew_s,whisker(dew_pnt::numeric) as tdew_sw,
+avg(sol_rad_avg*24*0.0036) as rs_s,whisker((sol_rad_avg*24*0.0036)::numeric) as rs_sw,
+--avg(rso) as rso_s,hisker(rso::numeric) as rso_sw,
+--avg(rnl) as rnl_s,whisker(rnl::numeric) as rnl_sw,
+avg(wind_spd_avg) as u2_s,whisker(wind_spd_avg::numeric) as u2_sw
+--avg(k) as k_r,(whisker(k::numeric) as kr_w
+from station join avg_dates using (ymd)
+group by station_id,m,d
+),
+l as (
+select station_id,m,d,
+avg(eto) as eto_lt,whisker(eto::numeric) as eto_ltw
+from lt_15day join
+(select m,d,extract(doy from ymd) as doy from avg_dates) as d
+using(doy)
+group by station_id,m,d
+),
+j as (
+select * from r full outer join s
+using (station_id,m,d)
+full outer join l
+using (station_id,m,d)
+)
+select j.*,s.elevation/3.28084 as z from j join station_info s using (station_id);
+ #+END_SRC
+
+And we can take a statewide look at this as well.
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+set search_path=compare,catalogs,public;
+
+create materialized view station_raster_whisker_statewide as
+with r as (
+select m,d, count(*) as r_count,
+avg(eto) as eto_r,whisker(eto::numeric) as eto_rw,
+avg(tn) as tn_r,whisker(tn::numeric) as tn_rw,
+avg(tx) as tx_r,whisker(tx::numeric) as tx_rw,
+avg(tdew) as tdew_r,whisker(tdew::numeric) as tdew_rw,
+avg(rs) as rs_r,whisker(rs::numeric) as rs_rw,
+avg(rso) as rso_r,whisker(rso::numeric) as rso_rw,
+avg(rnl) as rnl_r,whisker(rnl::numeric) as rnl_rw,
+avg(u2) as u2_r,whisker(u2::numeric) as u2_rw,
+avg(k) as k_r,whisker(k::numeric) as k_rw
+from raster join avg_dates using (ymd)
+group by m,d),
+s as (
+select m,d, count(*) as s_count,
+avg(s.elevation/3.28084) as z_s,whisker((s.elevation/3.28084)::numeric) as z_sw,
+avg(asce_eto) as eto_s,whisker(asce_eto::numeric) as eto_sw,
+avg(air_tmp_min) as tn_s,whisker(air_tmp_min::numeric) as tn_sw,
+avg(air_tmp_max) as tx_s,whisker(air_tmp_max::numeric) as tx_sw,
+avg(dew_pnt) as tdew_s,whisker(dew_pnt::numeric) as tdew_sw,
+avg(sol_rad_avg*24*0.0036) as rs_s,whisker((sol_rad_avg*24*0.0036)::numeric) as rs_sw,
+--avg(rso) as rso_s,hisker(rso::numeric) as rso_sw,
+--avg(rnl) as rnl_s,whisker(rnl::numeric) as rnl_sw,
+avg(wind_spd_avg) as u2_s,whisker(wind_spd_avg::numeric) as u2_sw
+--avg(k) as k_r,(whisker(k::numeric) as kr_w
+from station join avg_dates using (ymd)
+join station_info s using (station_id)
+group by m,d
+),
+l as (
+select m,d,
+avg(eto) as eto_lt,whisker(eto::numeric) as eto_ltw
+from lt_15day join
+(select m,d,extract(doy from ymd) as doy from avg_dates) as d
+using(doy)
+group by m,d
+),
+j as (
+select * from r full outer join s
+using (m,d)
+full outer join l
+using (m,d)
+)
+select * from j;
+ #+END_SRC
+
+ #+RESULTS:
+ SET
+ SELECT 52
+ SET
+ SET
+ SET
+
+*** Mixin data
+
+From the overall average data, we calculate our mixins.  These are what we call
+eto calculations where mixin certain components from one measurment into
+another, in order to decide which ones are most important in our determination
+of what parameters are most important.  The naming scheme is ~[r|s|]_x[0su]~
+where ~[r|s]~ defines the base measurements, and ~x[0su]~ describe the
+components we *mixin* from our other set, where ~0~ is no mixin, just
+recalculate; ~s~ is mixin of ~Rs~, ~u~ is mixin of ~U2~, and finally, ~su~ is
+mixin of both ~Rs~ and ~U2~.
+
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+set search_path=compare,catalogs,public;
+
+create materialized view station_raster_eto_mixin as
+with a as (
+ select station_id,m,d,
+ eto_lt::decimal(6,2) as lt, eto_r::decimal(6,2) as r, eto_s::decimal(6,2) as s,
+ et0.et0(z,tn_r,tx_r,tdew_r,u2_r,rs_r,rnl_r)::decimal(6,2) as r_x0,
+ et0.et0(z,tn_s,tx_s,tdew_s,u2_s,rs_s,rnl_r)::decimal(6,2) as s_x0,
+ et0.et0(z,tn_r,tx_r,tdew_r,u2_r,rs_s,rnl_r)::decimal(6,2) as r_xs,
+ et0.et0(z,tn_r,tx_r,tdew_r,u2_s,rs_r,rnl_r)::decimal(6,2) as r_xu,
+ et0.et0(z,tn_r,tx_r,tdew_r,u2_s,rs_s,rnl_r)::decimal(6,2) as r_xsu,
+ et0.et0(z,tn_s,tx_s,tdew_s,u2_s,rs_r,rnl_r)::decimal(6,2) as s_xs,
+ et0.et0(z,tn_s,tx_s,tdew_s,u2_r,rs_s,rnl_r)::decimal(6,2) as s_xu,
+ et0.et0(z,tn_s,tx_s,tdew_s,u2_r,rs_r,rnl_r)::decimal(6,2) as s_xsu
+ from station_raster_whisker
+ where eto_s is not null;
+)
+select
+station_id,
+array_agg(lt order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as lt,
+array_agg(r order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as r,
+array_agg(s order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as s,
+array_agg(r_x0 order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as r_x0 ,
+array_agg(r_xs order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as r_xs,
+array_agg(r_xu order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as r_xu,
+array_agg(r_xsu order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as r_xsu,
+array_agg(s_x0 order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as s_x0 ,
+array_agg(s_xs order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as s_xs,
+array_agg(s_xu order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as s_xu,
+array_agg(s_xsu order by CASE WHEN (m<10) THEN m+12 ELSE m END,d) as s_xsu
+from a
+group by station_id;
+ #+END_SRC
+
+*** get_best_zone
+
+Then we write a function, that returns the best fit zone for each of these
+measurments.
+
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+set search_path=compare,catalogs,public;
+
+create function compare.get_best_zone(e float[])
+returns text
+as $$
+with z as (
+ select zone,ifft from avg_0625.final_zone_parameters
+ where zones=16
+),
+w as (
+	select weight_id,w
+	from fft.weights
+	where weight_id=3
+),
+r as (
+ select zone,fft.w_rmse($1,ifft,w) as rmse
+ from z,w
+),
+m as (
+ select min(rmse) as min
+ from r
+)
+select zone from r join m
+on (r.rmse=m.min);
+$$ LANGUAGE SQL;
+#+END_SRC
+
+*** station_raster_eto_mixin_best_zone
+
+Using the above function, we can then calculate the best zone for all these
+combinations.
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+set search_path=compare,catalogs,public;
+
+create materialized view station_raster_eto_mixin_best_zone as
+select station_id,
+get_best_zone(lt) as lt,
+get_best_zone(r) as r,
+get_best_zone(s) as s,
+get_best_zone(r_x0) as r_x0,
+get_best_zone(r_xs) as r_xs,
+get_best_zone(r_xu) as r_xu,
+get_best_zone(r_xsu) as r_xsu,
+get_best_zone(s_x0) as s_x0,
+get_best_zone(s_xs) as s_xs,
+get_best_zone(s_xu) as s_xu,
+get_best_zone(s_xsu) as s_xsu
+from station_raster_eto_mixin;
+ #+END_SRC
+
+ #+RESULTS:
+ SET
+
+** Crosstabs.
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+drop schema station_raster_zone_count;
+create schema station_raster_zone_count;
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+ create table station_raster_zone_count.r_lt as
+  select * from crosstab('select r,lt,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+
+  create table station_raster_zone_count.r_s as
+  select * from crosstab('select r,s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+  create table station_raster_zone_count.r_s_x0 as
+  select * from crosstab('select r,s_x0,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+  create table station_raster_zone_count.r_s_xs as
+  select * from crosstab('select r,s_xs,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+  create table station_raster_zone_count.r_s_xu as
+  select * from crosstab('select r,s_xu,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+  create table station_raster_zone_count.r_s_xsu as
+  select * from crosstab('select r,s_xsu,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+
+
+  create table station_raster_zone_count.delta_r_s_x0 as
+  select * from crosstab('with r as (select r,s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2), n as ( select r,s_x0 as s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2) select r.r,n.s,n.count-r.count as delta from r join n on (r.r=n.r and r.s=n.s)','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+  create table station_raster_zone_count.delta_r_s_xs as
+  select * from crosstab('with r as (select r,s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2), n as ( select r,s_xs as s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2) select r.r,n.s,n.count-r.count as delta from r join n on (r.r=n.r and r.s=n.s)','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+  create table station_raster_zone_count.delta_r_s_xu as
+  select * from crosstab('with r as (select r,s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2), n as ( select r,s_xu as s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2) select r.r,n.s,n.count-r.count as delta from r join n on (r.r=n.r and r.s=n.s)','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+  create table station_raster_zone_count.delta_r_s_xsu as
+  select * from crosstab('with r as (select r,s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2), n as ( select r,s_xsu as s,count(*) from compare.station_raster_eto_mixin_best_zone group by 1,2 order by 1,2) select r.r,n.s,n.count-r.count as delta from r join n on (r.r=n.r and r.s=n.s)','select zone from avg_0625.final_zone_parameters where zones=16 order by zone')
+  ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+#+END_SRC
+
+#+RESULTS:
+
+Also, it'd be nice to easily copy all this for input into a google spreadsheet
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+\COPY station_raster_zone_count.r_lt to r_lt.csv with csv header
+\COPY station_raster_zone_count.r_s to r_s.csv with csv header
+\COPY station_raster_zone_count.r_s_x0 to r_s_x0.csv with csv header
+\COPY station_raster_zone_count.r_s_xs to r_s_xs.csv with csv header
+\COPY station_raster_zone_count.r_s_xu to r_s_xu.csv with csv header
+\COPY station_raster_zone_count.r_s_xsu to r_s_xsu.csv with csv header
+\COPY station_raster_zone_count.delta_r_s_x0 to delta_r_s_x0.csv with csv header
+\COPY station_raster_zone_count.delta_r_s_xs to delta_r_s_xs.csv with csv header
+\COPY station_raster_zone_count.delta_r_s_xu to delta_r_s_xu.csv with csv header
+\COPY station_raster_zone_count.delta_r_s_xsu to delta_r_s_xsu.csv with csv header
+#+END_SRC
+
+#+RESULTS:
+** Davis / Statewide Examples
+
+Here are the methods to pull out station info, or the statewide data for
+parameter examples.
+
+This is for Davis.
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+create temp view davis as
+select m,d,
+(eto_r)::decimal(6,2),
+(tn_r)::decimal(6,2),
+(tx_r)::decimal(6,2),
+(tdew_r)::decimal(6,2),
+(u2_r)::decimal(6,2),
+(rs_r)::decimal(6,2),
+(rnl_r)::decimal(6,2),
+(eto_rw).qn::decimal(6,2) as eto_qn,
+(tn_rw).qn::decimal(6,2) as tn_qn,
+(tx_rw).qn::decimal(6,2) as tx_qn,
+(tdew_rw).qn::decimal(6,2) as tdew_qn,
+(u2_rw).qn::decimal(6,2) as u2_qn,
+(rs_rw).qn::decimal(6,2) as rs_qn,
+(rnl_rw).qn::decimal(6,2) as rnl_qn,
+(eto_rw).qx::decimal(6,2) as eto_qx,
+(tn_rw).qx::decimal(6,2) as tn_qx,
+(tx_rw).qx::decimal(6,2) as tx_qx,
+(tdew_rw).qx::decimal(6,2) as tdew_qx,
+(u2_rw).qx::decimal(6,2) as u2_qx,
+(rs_rw).qx::decimal(6,2) as rs_qx,
+(rnl_rw).qx::decimal(6,2) as rnl_qx
+from compare.station_raster_whisker
+where station_id=6
+order by CASE WHEN (m<10) THEN m+12 ELSE m END,d ;
+
+\copy (select * from davis) to davis.csv with csv header
+
+#+END_SRC
+
+#+RESULTS:
+CREATE VIEW
+COPY 52
+
+And for the Statewide example
+
+#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+create temp view sw as
+select m,d,
+(eto_r)::decimal(6,2),
+(tn_r)::decimal(6,2),
+(tx_r)::decimal(6,2),
+(tdew_r)::decimal(6,2),
+(u2_r)::decimal(6,2),
+(rs_r)::decimal(6,2),
+(rnl_r)::decimal(6,2),
+(eto_rw).qn::decimal(6,2) as eto_qn,
+(tn_rw).qn::decimal(6,2) as tn_qn,
+(tx_rw).qn::decimal(6,2) as tx_qn,
+(tdew_rw).qn::decimal(6,2) as tdew_qn,
+(u2_rw).qn::decimal(6,2) as u2_qn,
+(rs_rw).qn::decimal(6,2) as rs_qn,
+(rnl_rw).qn::decimal(6,2) as rnl_qn,
+(eto_rw).qx::decimal(6,2) as eto_qx,
+(tn_rw).qx::decimal(6,2) as tn_qx,
+(tx_rw).qx::decimal(6,2) as tx_qx,
+(tdew_rw).qx::decimal(6,2) as tdew_qx,
+(u2_rw).qx::decimal(6,2) as u2_qx,
+(rs_rw).qx::decimal(6,2) as rs_qx,
+(rnl_rw).qx::decimal(6,2) as rnl_qx
+from compare.station_raster_whisker_statewide
+order by CASE WHEN (m<10) THEN m+12 ELSE m END,d ;
+
+\copy (select * from sw) to statewide.csv with csv header
+
+#+END_SRC
+
+#+RESULTS:
+CREATE VIEW
+COPY 52

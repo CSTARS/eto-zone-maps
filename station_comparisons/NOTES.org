@@ -43,36 +43,7 @@ where o.latitude::decimal(6,3) != n.latitude::decimal(6,3);
         211 | Gilroy           | Gilroy           |     37.01 |     -121.54 | 37.015026 |  -121.53704
 
 
-* Station Comparisons to ETo Zones
-
-Once the final zones have been calculated, it is worthwhile to compare
-the zones to the individual CIMIS stations.  Since the station data
-was not explicitly included in the ETo zone calculations, this is
-something of an independant verification, although the station
-meteorological data does drive the calculations.
-
-** Station data extraction
-
-The code below shows the method to extract the station data from the GrassDB.
-
-#+BEGIN_SRC bash
-# in GRASSDB/cimis/quinn
-if (true); then
-  vars=ETo,Tn,Tx,Tdew,Rs,Rso,Rnl,U2,K
-  file=~/station_raster_data.csv
-else # FAO_data
-  vars=vars=FAO_ETo,FAO_Rso,K # for FAO data
-  file=~/station_raster_fao_data.csv
-fi
-rm ${file}
-echo x,y,station,date,$vars > ${file}
-for m in 20??-??-??; do
-  echo $m;
-  v.out.ascii fs=' ' input=stations | cut -d' ' -f 1,2,4 |  sed -e "s/$/,$m/" |\
-    r.what input=$(echo $vars | sed -e "s/,/@$m,/g" -e "s/$/@$m/") fs=',' >> ${file};
-done
-#+END_SRC
-
+* ETo Zone Final Zone
 I have managed to recover the final_zones calculation, whew!
 
 Note, we went up to 18 zones, in the total_move step, but we are pulling from
@@ -81,7 +52,8 @@ the 16th iteration.  Also, I am adding in some best colors for this as well.
 #+header: :engine postgresql
 #+header: :database eto_zones
 #+BEGIN_SRC sql :results raw
-	create view avg_0625.final_zone_parameters as
+  select fft.require_fft();
+	create materialized view avg_0625.final_zone_parameters as
 	with
 	z(zones) as (
 		select generate_series(1,16)
@@ -101,12 +73,46 @@ the 16th iteration.  Also, I am adding in some best colors for this as well.
 	d[2]::decimal(6,3) as h1,
 	e[3]::decimal(6,3) as p2,
 	d[3]::decimal(6,3) as h2,
+  ifft(e,d,52) as ifft,
 	eto
 	from a
 	order by 1;
 #+END_SRC
 
 #+RESULTS:
+require_fft
+SELECT 136
+
+
+* Station Comparisons to ETo Zones
+
+Once the final zones have been calculated, it is worthwhile to compare
+the zones to the individual CIMIS stations.  Since the station data
+was not explicitly included in the ETo zone calculations, this is
+something of an independant verification, although the station
+meteorological data does drive the calculations.
+
+** Station data extraction
+*** From GrassDB
+The code below shows the method to extract the station data from the GrassDB.
+
+#+BEGIN_SRC bash
+# in GRASSDB/cimis/quinn
+if (true); then
+  vars=ETo,Tn,Tx,Tdew,Rs,Rso,Rnl,U2,K
+  file=~/station_raster_data.csv
+else # FAO_data
+  vars=vars=FAO_ETo,FAO_Rso,K # for FAO data
+  file=~/station_raster_fao_data.csv
+fi
+rm ${file}
+echo x,y,station,date,$vars > ${file}
+for m in 20??-??-??; do
+  echo $m;
+  v.out.ascii fs=' ' input=stations | cut -d' ' -f 1,2,4 |  sed -e "s/$/,$m/" |\
+    r.what input=$(echo $vars | sed -e "s/,/@$m,/g" -e "s/$/@$m/") fs=',' >> ${file};
+done
+#+END_SRC
 
 You can get the station data organized into proper arrays of eto by combining
 all the values across all years.  We use the _station_eto_p_
@@ -235,6 +241,9 @@ CREATE VIEW
 	#+END_SRC
 
 	#+RESULTS:
+  require_fft
+
+  SELECT 2448
 
 	What if, instead, we wanted to see the RMSE for all the zones for each
 	station, and then create a crosstab of those so we can put them in a shapefile
@@ -318,7 +327,6 @@ require_fft
 
 require_fft
 
-
 *** Station Comparisons
 
  There are a number of parameters that can be investigated.  First, we can
@@ -366,6 +374,11 @@ require_fft
 		 #+END_SRC
 
 		 #+RESULTS:
+     require_fft
+
+     SELECT 2432
+     require_fft
+
 
 **** Station Zones Crosstab
 
@@ -572,10 +585,10 @@ require_fft
 			where run='move'
      ),
    a as (select
-		CASE WHEN ((extract(month from ymd))::integer <10) THEN (extract(year from ymd))::integer ELSE
-         (extract(year from ymd))::integer + 1 END as wy,
-		(extract(month from ymd))::integer as month,
-		(extract(day from ymd))::integer as day,
+		CASE WHEN ((extract(month from ymd15))::integer <10) THEN (extract(year from ymd15))::integer ELSE
+         (extract(year from ymd15))::integer + 1 END as wy,
+		(extract(month from ymd15))::integer as month,
+		(extract(day from ymd15))::integer as day,
 			station_id,s_eto
 			from compare.ymd15 ),
    b as (
@@ -634,6 +647,7 @@ require_fft
  CREATE VIEW
  CREATE VIEW
  CREATE VIEW
+ CREATE VIEW
 
 
 ** DWR Long term average
@@ -645,6 +659,7 @@ station_average_15day.csv file I received from DWR and then we can create a
 similar dataset.  I should note that 4 stations have longitude and latitude
 that don't match what the et.water.ca.gov site reports.
 
+*** Table creation
 #+header: :engine postgresql
 #+header: :database eto_zones
 #+BEGIN_SRC sql :results raw
@@ -750,6 +765,11 @@ SELECT 134
 	#+END_SRC
 
 	#+RESULTS:
+  require_fft
+
+  require_fft
+
+  SELECT 2144
 	require_fft
 
 	SELECT 2144
@@ -768,6 +788,7 @@ SELECT 134
 	#+END_SRC
 
 	#+RESULTS:
+  CREATE VIEW
 	CREATE VIEW
 
 *** Station Comparisons
@@ -817,6 +838,9 @@ SELECT 134
 		 #+END_SRC
 
 		 #+RESULTS:
+     require_fft
+
+     SELECT 2128
 		 require_fft
 
 		 SELECT 2128
@@ -1098,6 +1122,7 @@ SELECT 134
  #+END_SRC
 
  #+RESULTS:
+ CREATE VIEW
  CREATE VIEW
  CREATE VIEW
 
