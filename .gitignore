@@ -5,3 +5,6 @@
 **/appKey.mk
 fft/*.csv
 station_comparisons/input
+
+gdb/cimis/quinn
+gdb/cimis/2018-02-01

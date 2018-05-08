@@ -1,0 +1,31 @@
+COMMAND: v.in.ogr dsn="/var/lib/gdb/WORLD/zipcode/etc" output="zcta510_CA" layer="tl_2012_us_zcta510" spatial=-124.482003,32.528832,-114.131211,42.009517 min_area=0.0001 type="boundary" snap=-1
+GISDBASE: /var/lib/gdb
+LOCATION: WORLD MAPSET: zipcode USER: quinn DATE: Mon Dec 31 00:31:46 2012
+-----------------------------------------------------
+2318 input polygons
+Total area: 5.49755E+11 (2464 areas)
+Overlapping area: 0 (0 areas)
+Area without category: 6.87646E+10 (146 areas)
+---------------------------------------------------------------------------------
+COMMAND: v.select ainput="zcta510_CA" atype="point,line,boundary,centroid,area" alayer=1 binput="STUSPS_CA" btype="point,line,boundary,centroid,area" blayer=1 output="zips_CA" operator="overlap"
+GISDBASE: /var/lib/gdb
+LOCATION: WORLD MAPSET: zipcode USER: quinn DATE: Mon Dec 31 00:38:52 2012
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+COMMAND: v.proj input="tl_2012_zcta510_CA" location="WORLD" mapset="zipcode" output="zcta510_2012"
+GISDBASE: /var/lib/gdb
+LOCATION: CA MAPSET: PERMANENT USER: quinn DATE: Mon Dec 31 08:02:23 2012
+---------------------------------------------------------------------------------
+COMMAND: v.db.addcol "map=zcta510_2012" "layer=1" "col=zipcode varchar(5)"
+GISDBASE: /var/lib/gdb
+LOCATION: CA MAPSET: PERMANENT USER: quinn DATE: Mon Dec 31 08:02:29 2012
+---------------------------------------------------------------------------------
+COMMAND: v.db.dropcol "map=zcta510_2012" "layer=1" "col=ZCTA5CE10"
+GISDBASE: /var/lib/gdb
+LOCATION: CA MAPSET: PERMANENT USER: quinn DATE: Mon Dec 31 08:02:30 2012
+---------------------------------------------------------------------------------
+COMMAND: v.db.renamecol "map=zcta510_2012" "column=ZCTA5CE10,zipcode"
+GISDBASE: /var/lib/gdb
+LOCATION: CA MAPSET: PERMANENT USER: quinn DATE: Mon Dec 31 08:02:30 2012

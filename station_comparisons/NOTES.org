@@ -562,6 +562,9 @@ require_fft
  #+END_SRC
 
  #+RESULTS:
+ require_fft
+
+ CREATE VIEW
 
 **** Average Station Comparisons
 
@@ -1043,6 +1046,9 @@ SELECT 134
  require_fft
 
  CREATE VIEW
+ require_fft
+
+ CREATE VIEW
 
 **** Average lt_15day Comparisons
 
@@ -1483,6 +1489,11 @@ n as (
 select * from n where rmse=min;
 #+END_SRC
 
+#+RESULTS:
+require_fft
+
+SELECT 210536
+
 OK, now we have these updated locations.  We need to do some things here, we
 need to export the images.  Also, we need to see how many pixels have switched
 in applying this ratio.
@@ -1685,4 +1696,31 @@ for t in 3 5 7 10; do
  p0=${r}_s${s}_z${z}_t${t}_p0;
  r.mapcalc p0_${p0}=${p0}*eto_p0;
 done;done;done;done
+#+END_SRC
+
+* Unseminar
+
+#+BEGIN_SRC
+#export GRASS_RENDER_IMMEDIATE=png;
+export GRASS_RENDER_WIDTH=510;
+export GRASS_RENDER_HEIGHT=560;
+g.region -d b=-100 t=2500 tbres=1000;
+for s in 0 0.02 0.05; do
+for z in 1 30; do
+for t in 3 5 10 20; do
+ ws=ws_s${s}_z${z}_t${t};
+ v.vol.rst --overwrite input=et wcolumn=day_wind_spd_avg \
+  cross_input=Z@2km maskmap=state@2km \
+ tension=${t} zscale=${z} smooth=${s}  cross_output=${ws} \
+ where="day_wind_spd_avg_qc in ('K','Y','')";
+ r.colors map=${ws} rast=U2;
+ export GRASS_RENDER_FILE="${ws}.png";
+ d.mon --overwrite start=png;
+ d.erase;
+ d.rast ${ws};
+ d.legend title="${ws}"
+ raster=${ws};
+ d.mon stop=png;
+done;done;done 2>&1 | tee vol.rst.txt
+#g.region -d
 #+END_SRC

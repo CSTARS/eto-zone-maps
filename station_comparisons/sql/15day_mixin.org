@@ -265,7 +265,8 @@ combinations.
 set search_path=compare,catalogs,public;
 
 create materialized view station_raster_eto_mixin_best_zone as
-select station_id,
+with a as (
+select station_id,centroid,
 get_best_zone(lt) as lt,
 get_best_zone(r) as r,
 get_best_zone(s) as s,
@@ -277,10 +278,29 @@ get_best_zone(s_x0) as s_x0,
 get_best_zone(s_xs) as s_xs,
 get_best_zone(s_xu) as s_xu,
 get_best_zone(s_xsu) as s_xsu
-from station_raster_eto_mixin;
+from station_raster_eto_mixin
+join station_qgis_results s using (station_id)
+)
+select a.*,
+(r=s_x0)::boolean as s_x0_ok,
+(r=s_xs)::boolean as s_xs_ok,
+(r=s_xu)::boolean as s_xu_ok,
+(r=s_xsu)::boolean as s_xsu_ok
+from a;
+
  #+END_SRC
 
  #+RESULTS:
+ SET
+ SELECT 127
+ SET
+ SELECT 127
+ SET
+ SET
+ SET
+ SELECT 127
+ SET
+ SET
  SET
 
 ** Crosstabs.
