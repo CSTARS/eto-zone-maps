@@ -3,6 +3,9 @@ California ETo Zone Maps (eto-zone-maps)
 
 This project is intended to document the methodology used to create a new set of Reference Evapotranspiration (ETo) Zone Maps for California.   
 
+# DSI Unsiminar 
+Here are are some [data diversions](https://drive.google.com/drive/folders/1HigsM4hkpL418MV39eAeY2NQ-2QImYQm?usp=sharing)
+
 ## Data Sets
 
 The following datasets are available for use in the determination of the ETo Zone Maps.
