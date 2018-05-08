@@ -1,0 +1,4 @@
+COMMAND: v.in.ascii -z output="et" format="point" fs="|" skip=0 columns="station integer,x double precision,y double precision,z double precision,date varchar(10),day_air_tmp_min double precision,day_air_tmp_min_qc varchar(1),day_air_tmp_max double precision,day_air_tmp_max_qc varchar(1),day_wind_spd_avg double precision,day_wind_spd_avg_qc varchar(1),day_rel_hum_max double precision,day_rel_hum_max_qc varchar(1),day_dew_pnt double precision,day_dew_pnt_qc varchar(1)" x=2 y=3 z=4 cat=1
+GISDBASE: /home/cimis/gdb
+LOCATION: cimis MAPSET: 2014-09-05 USER: cimis DATE: Sat Sep  6 03:43:19 2014
+---------------------------------------------------------------------------------

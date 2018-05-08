@@ -1,0 +1,18 @@
+Sat Sep  6 03:44:01 2014
+day_wind_spd_avg_t5_z30_s0.05
+2014-09-05
+cimis
+raster
+3D spline from CIMIS data
+
+Daily average windspeed at 2m height
+tension=5.000000, smoothing=0.050000
+dnorm=373563.374098, dmin=1000.000000, wmult=1.000000, zmult=30.000000
+segmax=50, npmin=200, npmax=700, rmsdevi=0.144913
+wmin_data=0.500000, wmax_data=5.400000
+v+
+
+v.vol.rst input="et" cellinp="Z@2km" wcolumn="day_wind_spd_avg" tens\
+ion=5 smooth=0.05 where="day_wind_spd_avg_qc in ('K','Y','')" maskma\
+p="state@2km" segmax=50 npmin=200 npmax=700 dmin=1000.000000 wmult=1\
+.0 zmult=30 cellout="day_wind_spd_avg_t5_z30_s0.05"
