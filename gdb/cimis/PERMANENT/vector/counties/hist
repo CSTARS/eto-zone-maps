@@ -1,0 +1,3 @@
+COMMAND: v.convert input="counties" output="counties" endian="big"
+GISDBASE: /var/lib/gdb
+LOCATION: CA MAPSET: PERMANENT USER: quinn DATE: Tue Jan  1 09:31:36 2013

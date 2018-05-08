@@ -43,6 +43,47 @@ where o.latitude::decimal(6,3) != n.latitude::decimal(6,3);
         211 | Gilroy           | Gilroy           |     37.01 |     -121.54 | 37.015026 |  -121.53704
 
 
+* ETo Zone Final Zone
+I have managed to recover the final_zones calculation, whew!
+
+Note, we went up to 18 zones, in the total_move step, but we are pulling from
+the 16th iteration.  Also, I am adding in some best colors for this as well.
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+  select fft.require_fft();
+	create materialized view avg_0625.final_zone_parameters as
+	with
+	z(zones) as (
+		select generate_series(1,16)
+	),
+	a as (
+	 select zones,zone_id,eto,(fft(eto)).*
+	 from avg_0625.total_move join z using (zones)
+	 where iteration=5
+	)
+	select
+	zones,
+	zone_id,
+	(e[1]*25)::integer as v,
+	e[1]::decimal(3,1)||'_'||e[2]::decimal(3,1) as zone,
+	e[1]::decimal(6,3) as p0,
+	e[2]::decimal(6,3) as p1,
+	d[2]::decimal(6,3) as h1,
+	e[3]::decimal(6,3) as p2,
+	d[3]::decimal(6,3) as h2,
+  ifft(e,d,52) as ifft,
+	eto
+	from a
+	order by 1;
+#+END_SRC
+
+#+RESULTS:
+require_fft
+SELECT 136
+
+
 * Station Comparisons to ETo Zones
 
 Once the final zones have been calculated, it is worthwhile to compare
@@ -52,7 +93,7 @@ something of an independant verification, although the station
 meteorological data does drive the calculations.
 
 ** Station data extraction
-
+*** From GrassDB
 The code below shows the method to extract the station data from the GrassDB.
 
 #+BEGIN_SRC bash
@@ -73,38 +114,6 @@ for m in 20??-??-??; do
 done
 #+END_SRC
 
-I have managed to recover the final_zones calculation, whew!
-
-#+header: :engine postgresql
-#+header: :database eto_zones
-#+BEGIN_SRC sql :results raw
-create view avg_0625.final_zone_parameters as
-with
-z(zones) as (
-  select generate_series(1,16)
-),
-a as (
- select zones,zone_id,eto,(fft(eto)).*
- from avg_0625.total_move join z using (zones)
- where iteration=5
-)
-select
-zones,
-zone_id,
-(e[1]*25)::integer as v,
-e[1]::decimal(3,1)||'_'||e[2]::decimal(3,1) as zone,
-e[1]::decimal(6,3) as p0,
-e[2]::decimal(6,3) as p1,
-d[2]::decimal(6,3) as h1,
-e[3]::decimal(6,3) as p2,
-d[3]::decimal(6,3) as h2,
-eto
-from a
-order by 1;
-#+END_SRC
-
-#+RESULTS:
-
 You can get the station data organized into proper arrays of eto by combining
 all the values across all years.  We use the _station_eto_p_
 
@@ -124,7 +133,6 @@ with a as (select
 )
 select station_id,wy,array_length(eto,1) from b;
 #+END_SRC
-
 
 #+BEGIN_SRC sql :engine postgresql :database eto_zones :results raw
 create view compare.station_eto_p as
@@ -197,7 +205,6 @@ CREATE VIEW
  from a;
  #+END_SRC
 
-
 *** Station Best Zone
 
  This example shows how to get the best fitting zone for each station
@@ -234,7 +241,91 @@ CREATE VIEW
 	#+END_SRC
 
 	#+RESULTS:
+  require_fft
 
+  SELECT 2448
+
+	What if, instead, we wanted to see the RMSE for all the zones for each
+	station, and then create a crosstab of those so we can put them in a shapefile
+	for inclusion into a shapefile of station information.
+
+	#+header: :engine postgresql
+	#+header: :database eto_zones
+	#+BEGIN_SRC sql :results raw
+	 select fft.require_fft();
+	 create temp view station_zone_rmse as
+		 with z as (
+		select zones,zone,
+			ifft(ARRAY[p0,p1,p2],ARRAY[0.0,h1,h2],52) as r
+			from avg_0625.final_zone_parameters
+		 where zones=16
+	 ),
+	 w as (
+		select weight_id,w
+		from fft.weights
+		where weight_id=3
+	 ),
+	r as (
+		select station_id,zones,zone,
+		fft.w_rmse(r,s.eto,w) as rmse
+		from z,w,compare.station_eto_p s
+	 )
+   select station_id,zone,rmse
+	 from r;
+
+		create temp view all_zones as
+    select zone from unnest(ARRAY['2.3_0.5','2.7_1.3',
+    '3.0_1.8','3.1_2.5','3.3_2.1','3.4_2.7','3.8_2.3','3.8_2.9',
+    '4.1_3.1','4.6_3.1','5.0_3.1','5.1_3.6','5.3_3.4','5.6_3.8',
+    '6.1_4.1','6.6_4.3']::varchar[]) as z(zone);
+
+		create table compare.station_zone_rmse_crosstab as
+		select * from crosstab('select * from station_zone_rmse order by 1,2','select * from all_zones order by 1')
+		ct(station_id int,"2.3_0.5" decimal(6,3),"2.7_1.3" decimal(6,3),"3.0_1.8" decimal(6,3),"3.1_2.5" decimal(6,3),"3.3_2.1" decimal(6,3),"3.4_2.7" decimal(6,3),"3.8_2.3" decimal(6,3),"3.8_2.9" decimal(6,3),"4.1_3.1" decimal(6,3),"4.6_3.1" decimal(6,3),"5.0_3.1" decimal(6,3),"5.1_3.6" decimal(6,3),"5.3_3.4" decimal(6,3),"5.6_3.8" decimal(6,3),"6.1_4.1" decimal(6,3),"6.6_4.3" decimal(6,3));
+
+	#+END_SRC
+
+	And Now, we want to create a station product that includes these RMSE errors,
+	the raster, station, and lt values, the best fit zone and the raster zone.
+
+	#+header: :engine postgresql
+	#+header: :database eto_zones
+	#+BEGIN_SRC sql :results raw
+		select fft.require_fft();
+		create table compare.station_qgis_results as
+		with b as (
+		select station_id,moved as raster,best as s_station
+		from avg_0625.station_best_zone_in_zones where zones=16
+		),
+		i as (
+		select station_id,name,
+		st_setsrid(st_MakePoint(east,north),3310) as centroid
+		from compare.station_info join compare.station_xy using (station_id)
+		)
+		select * from
+		i join b using (station_id)
+		join compare.lt_s_ratio e using (station_id)
+		join compare.station_zone_rmse_crosstab r using (station_id)
+
+#+END_SRC
+
+#+RESULTS:
+require_fft
+
+SELECT 127
+require_fft
+
+require_fft
+
+require_fft
+
+require_fft
+
+require_fft
+
+require_fft
+
+require_fft
 
 *** Station Comparisons
 
@@ -283,6 +374,11 @@ CREATE VIEW
 		 #+END_SRC
 
 		 #+RESULTS:
+     require_fft
+
+     SELECT 2432
+     require_fft
+
 
 **** Station Zones Crosstab
 
@@ -434,7 +530,7 @@ CREATE VIEW
  #+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
  select fft.require_fft();
 
- create view final_station_zones as
+ create or replace view final_station_zones as
  with a as (
 		select station_id,st_value(r.rast,16,x,y) as v
 		from compare.station_xy as s, avg_0625.rasters r
@@ -460,12 +556,15 @@ CREATE VIEW
    join compare.station_best_final_zone b using (station_id)
    join avg_0625.final_zone_parameters aa on (a.v=aa.zone_id)
    join avg_0625.final_zone_parameters mm on (m.v=mm.zone_id)
-   where b.zones=16 and aa.zones=16 and mm.zones=16
+   where p.zones=16 and b.zones=16 and aa.zones=16 and mm.zones=16
    order by station_id;
 
  #+END_SRC
 
  #+RESULTS:
+ require_fft
+
+ CREATE VIEW
 
 **** Average Station Comparisons
 
@@ -489,10 +588,10 @@ CREATE VIEW
 			where run='move'
      ),
    a as (select
-		CASE WHEN ((extract(month from ymd))::integer <10) THEN (extract(year from ymd))::integer ELSE
-         (extract(year from ymd))::integer + 1 END as wy,
-		(extract(month from ymd))::integer as month,
-		(extract(day from ymd))::integer as day,
+		CASE WHEN ((extract(month from ymd15))::integer <10) THEN (extract(year from ymd15))::integer ELSE
+         (extract(year from ymd15))::integer + 1 END as wy,
+		(extract(month from ymd15))::integer as month,
+		(extract(day from ymd15))::integer as day,
 			station_id,s_eto
 			from compare.ymd15 ),
    b as (
@@ -551,27 +650,30 @@ CREATE VIEW
  CREATE VIEW
  CREATE VIEW
  CREATE VIEW
+ CREATE VIEW
 
 
 ** DWR Long term average
 
 We also have the DWR long term averages.  These are a smaller set of data that
 are more throughly vetted.  DWR would prefer we use these for our comparisons.
-These are added to the compare.cimis_15day table, and then we can create a
+These are added to the compare.lt_15day table, they come from the
+station_average_15day.csv file I received from DWR and then we can create a
 similar dataset.  I should note that 4 stations have longitude and latitude
 that don't match what the et.water.ca.gov site reports.
 
+*** Table creation
 #+header: :engine postgresql
 #+header: :database eto_zones
 #+BEGIN_SRC sql :results raw
-create materialized view compare.cimis_15day_eto_p as
+create materialized view compare.lt_15day_eto_p as
 with d(doy) as (
  select * from generate_series(4,365,7)
 )
 select
 station_id,
 array_agg(eto order by case when (doy<277) then doy+365 else doy end) as eto
-from compare.cimis_15day join d using (doy)
+from compare.lt_15day join d using (doy)
 group by 1
 order by 1;
 #+END_SRC
@@ -584,12 +686,12 @@ SELECT 134
  #+header: :engine postgresql
  #+header: :database eto_zones
  #+BEGIN_SRC sql :results raw
- create view compare.cimis_15day_xy as
+ create view compare.lt_15day_xy as
  with p as (
 	select distinct station_id,
 	st_transform(st_setsrid(
 	st_makepoint(longitude,latitude),4326),3310) as pt
- from compare.cimis_15day
+ from compare.lt_15day
  )
  select station_id,pid,key,
  k.east,k.north,
@@ -612,11 +714,11 @@ SELECT 134
  #+BEGIN_SRC sql :results raw
  select fft.require_fft();
 
- create view compare.cimis_15day_fft as
+ create view compare.lt_15day_fft as
  with a as (
 	select station_id,
 	(fft(eto)).*
-	from compare.station_eto_p
+	from compare.lt_15day_eto_p
  )
  select station_id,
  e[1]::decimal(6,3) as p0,
@@ -627,6 +729,8 @@ SELECT 134
  from a;
  #+END_SRC
 
+ #+RESULTS:
+
 *** Station Best Zone
 
  This example shows how to get the best fitting zone for each station
@@ -636,8 +740,9 @@ SELECT 134
 	#+BEGIN_SRC sql :results raw
 	select fft.require_fft();
 
-	create materialized view compare.cimis_15day_best_final_zone as
-	with z as (
+	create materialized view compare.lt_15day_best_final_zone as
+	with
+  z as (
 	 select zones,zone,
 	 ifft(ARRAY[p0,p1,p2],ARRAY[0.0,h1,h2],52) as r
 	from avg_0625.final_zone_parameters
@@ -649,7 +754,7 @@ SELECT 134
 	r as (
 	 select station_id,zones,zone,
 	 fft.w_rmse(r,s.eto,w) as rmse
-	 from z,w,compare.cimis_15day_eto_p s
+	 from z,w,compare.lt_15day_eto_p s
 	),
 	m as (
 	 select station_id,zones,zone,
@@ -663,10 +768,34 @@ SELECT 134
 	#+END_SRC
 
 	#+RESULTS:
+  require_fft
+
+  require_fft
+
+  SELECT 2144
 	require_fft
 
 	SELECT 2144
 
+<<<<<<< HEAD
+=======
+	Finally, somehow I have a table missing from this documentation.  It's
+
+	#+header: :engine postgresql
+	#+header: :database eto_zones
+	#+BEGIN_SRC sql :results raw
+		create view public.lt_station_zones as
+		select s.station_id,z.zone,
+		st_setsrid(st_makepoint(s.longitude,s.latitude),4369) as centriod
+		from compare.station_info s
+		join compare.lt_15day_best_final_zone z using (station_id)
+		where z.zones=16;
+	#+END_SRC
+
+	#+RESULTS:
+  CREATE VIEW
+	CREATE VIEW
+>>>>>>> 5444b07bd3785af812a5f6314cea412e9a724b84
 
 *** Station Comparisons
 
@@ -687,7 +816,7 @@ SELECT 134
 		 #+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
 		 select fft.require_fft();
 
-		 create materialized view avg_0625.cimis_15day_best_zone_in_zones as
+		 create materialized view avg_0625.lt_15day_best_zone_in_zones as
 		 with z(zones) as (
 			 select generate_series(1,16)
 		 ),
@@ -707,7 +836,7 @@ SELECT 134
 			mm.zone as moved,
 			b.zone as best
 			from a join m using (zones,station_id)
-			join compare.cimis_15day_best_final_zone b using (zones,station_id)
+			join compare.lt_15day_best_final_zone b using (zones,station_id)
 			join avg_0625.final_zone_parameters aa on (a.zones=aa.zones and a.v=aa.zone_id)
 			join avg_0625.final_zone_parameters mm on (m.zones=mm.zones and m.v=mm.zone_id)
 			order by station_id;
@@ -715,165 +844,166 @@ SELECT 134
 		 #+END_SRC
 
 		 #+RESULTS:
+     require_fft
+
+     SELECT 2128
 		 require_fft
 
 		 SELECT 2128
 
 **** Station Zones Crosstab
 
- Given this table, I can calculate the count of how many stations occur in each
- zone for each set of zones.  This has to have a table for each set of zones, as
- the columns change.
+	Given this table, I can calculate the count of how many stations occur in each
+	zone for each set of zones.  This has to have a table for each set of zones, as
+	the columns change.
 
- #+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
- create table cimis_15day_zone_count.z01 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=1 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=1 order by 1')
- as ct(zone text,"3.9_2.8" int);
+	#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+	create table lt_15day_zone_count.z01 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=1 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=1 order by 1')
+	as ct(zone text,"3.9_2.8" int);
 
- create table cimis_15day_zone_count.z02 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=2 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=2 order by 1')
- as ct(zone text,"3.5_2.5" int,"5.4_3.5" int);
+	create table lt_15day_zone_count.z02 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=2 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=2 order by 1')
+	as ct(zone text,"3.5_2.5" int,"5.4_3.5" int);
 
- create table cimis_15day_zone_count.z03 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=3 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=3 order by 1')
- as ct(zone text,"3.1_2.2" int,"3.8_2.8" int,"5.4_3.6" int);
+	create table lt_15day_zone_count.z03 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=3 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=3 order by 1')
+	as ct(zone text,"3.1_2.2" int,"3.8_2.8" int,"5.4_3.6" int);
 
- create table cimis_15day_zone_count.z04 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=4 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=4 order by 1')
- as ct(zone text,"2.9_1.6" int,"3.3_2.5" int,"4.0_3.0" int,"5.5_3.6" int);
+	create table lt_15day_zone_count.z04 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=4 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=4 order by 1')
+	as ct(zone text,"2.9_1.6" int,"3.3_2.5" int,"4.0_3.0" int,"5.5_3.6" int);
 
- create table cimis_15day_zone_count.z05 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=5 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=5 order by 1')
- as ct(zone text,"2.9_1.5" int,"3.3_2.5" int,"3.9_2.9" int,"5.1_3.3" int,"6.0_4.0" int);
+	create table lt_15day_zone_count.z05 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=5 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=5 order by 1')
+	as ct(zone text,"2.9_1.5" int,"3.3_2.5" int,"3.9_2.9" int,"5.1_3.3" int,"6.0_4.0" int);
 
- create table cimis_15day_zone_count.z06 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=6 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=6 order by 1')
- as ct(zone text,"2.7_1.3" int,"3.2_2.0" int,"3.3_2.6" int,"3.9_2.9" int,"5.1_3.3" int,"6.0_4.0" int);
+	create table lt_15day_zone_count.z06 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=6 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=6 order by 1')
+	as ct(zone text,"2.7_1.3" int,"3.2_2.0" int,"3.3_2.6" int,"3.9_2.9" int,"5.1_3.3" int,"6.0_4.0" int);
 
- create table cimis_15day_zone_count.z07 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=7 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=7 order by 1')
- as ct(zone text,"2.7_1.3" int,"3.2_2.0" int,"3.2_2.6" int,"3.7_2.7" int,"4.1_3.1" int,"5.1_3.3" int);
+	create table lt_15day_zone_count.z07 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=7 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=7 order by 1')
+	as ct(zone text,"2.7_1.3" int,"3.2_2.0" int,"3.2_2.6" int,"3.7_2.7" int,"4.1_3.1" int,"5.1_3.3" int);
 
- create table cimis_15day_zone_count.z08 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=8 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=8 order by 1')
- as ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.9" int,"4.2_3.1" int,"5.2_3.3" int);
+	create table lt_15day_zone_count.z08 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=8 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=8 order by 1')
+	as ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.9" int,"4.2_3.1" int,"5.2_3.3" int);
 
- create table cimis_15day_zone_count.z09 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=9 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=9 order by 1')
- ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"5.0_3.2" int,"5.4_3.6" int);
+	create table lt_15day_zone_count.z09 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=9 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=9 order by 1')
+	ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"5.0_3.2" int,"5.4_3.6" int);
 
- create table cimis_15day_zone_count.z10 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=10 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=10 order by 1')
- ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.2" int,"5.3_3.5" int,"5.8_3.9" int);
+	create table lt_15day_zone_count.z10 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=10 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=10 order by 1')
+	ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.2" int,"5.3_3.5" int,"5.8_3.9" int);
 
- create table cimis_15day_zone_count.z11 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=11 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=11 order by 1')
- ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.1" int,"5.2_3.7" int,"5.3_3.4" int);
+	create table lt_15day_zone_count.z11 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=11 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=11 order by 1')
+	ct(zone text,"2.7_1.3" int,"3.1_2.5" int,"3.2_1.9" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.1" int,"5.2_3.7" int,"5.3_3.4" int);
 
- create table cimis_15day_zone_count.z12 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=12 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=12 order by 1')
- ct(zone text,"2.5_1.0" int,"3.0_1.7" int,"3.1_2.5" int,"3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.1" int,"5.2_3.7" int,"5.3_3.4" int);
+	create table lt_15day_zone_count.z12 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=12 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=12 order by 1')
+	ct(zone text,"2.5_1.0" int,"3.0_1.7" int,"3.1_2.5" int,"3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.1" int,"5.2_3.7" int,"5.3_3.4" int);
 
- create table cimis_15day_zone_count.z13 as
- select * from crosstab(
-'select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=13 group by 1,2 order by 1,2',
-'select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=13 order by 1')
- ct(zone text,"2.7_1.4" int,"3.1_1.8" int,"3.1_2.5" int,
-"3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,
-"4.1_3.1" int,"4.9_3.1" int,"5.2_3.7" int,"5.3_3.4" int);
+	create table lt_15day_zone_count.z13 as
+	select * from crosstab(
+ 'select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=13 group by 1,2 order by 1,2',
+ 'select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=13 order by 1')
+	ct(zone text,"2.7_1.4" int,"3.1_1.8" int,"3.1_2.5" int,
+ "3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,
+ "4.1_3.1" int,"4.9_3.1" int,"5.2_3.7" int,"5.3_3.4" int);
 
- create table cimis_15day_zone_count.z14 as
- select * from crosstab(
-'select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=14 group by 1,2 order by 1,2',
-'select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=14 order by 1')
- ct(zone text,"2.7_1.4" int,"3.1_1.8" int,"3.1_2.5" int,"3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.1" int,"5.3_3.3" int,"5.6_3.8" int);
+	create table lt_15day_zone_count.z14 as
+	select * from crosstab(
+ 'select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=14 group by 1,2 order by 1,2',
+ 'select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=14 order by 1')
+	ct(zone text,"2.7_1.4" int,"3.1_1.8" int,"3.1_2.5" int,"3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.9_3.1" int,"5.3_3.3" int,"5.6_3.8" int);
 
- create table cimis_15day_zone_count.z15 as
- select * from crosstab(
-'select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=15 group by 1,2 order by 1,2',
-'select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=15 order by 1')
- ct(zone text,"2.7_1.4" int,"3.1_1.8" int,"3.1_2.5" int,"3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.3_3.4" int,"5.6_3.8" int);
+	create table lt_15day_zone_count.z15 as
+	select * from crosstab(
+ 'select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=15 group by 1,2 order by 1,2',
+ 'select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=15 order by 1')
+	ct(zone text,"2.7_1.4" int,"3.1_1.8" int,"3.1_2.5" int,"3.4_2.1" int,"3.5_2.6" int,"3.8_2.8" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.3_3.4" int,"5.6_3.8" int);
 
- create table cimis_15day_zone_count.z16 as
- select * from crosstab('select moved,best,count(*) from avg_0625.cimis_15day_best_zone_in_zones where zones=16 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=16 order by 1')
- ct(zone text,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.3_3.4" int,"5.6_3.8" int);
+	create table lt_15day_zone_count.z16 as
+	select * from crosstab('select moved,best,count(*) from avg_0625.lt_15day_best_zone_in_zones where zones=16 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=16 order by 1')
+	ct(zone text,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.3_3.4" int,"5.6_3.8" int);
 
- #+END_SRC
+	#+END_SRC
 
- #+RESULTS:
+	#+RESULTS:
 
+	#+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
+		create table lt_15day_zone_enum.z01 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=1 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=1 order by 1')
+		as ct(zone text,"3.9_2.8" text);
 
- #+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
- create table cimis_15day_zone_enum.z01 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=1 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=1 order by 1')
- as ct(zone text,"3.9_2.8" text);
+		create table lt_15day_zone_enum.z02 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=2 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=2 order by 1')
+		as ct(zone text,"3.5_2.5" text,"5.4_3.5" text);
 
- create table cimis_15day_zone_enum.z02 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=2 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=2 order by 1')
- as ct(zone text,"3.5_2.5" text,"5.4_3.5" text);
+		create table lt_15day_zone_enum.z03 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=3 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=3 order by 1')
+		as ct(zone text,"3.1_2.2" text,"3.8_2.8" text,"5.4_3.6" text);
 
- create table cimis_15day_zone_enum.z03 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=3 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=3 order by 1')
- as ct(zone text,"3.1_2.2" text,"3.8_2.8" text,"5.4_3.6" text);
+		create table lt_15day_zone_enum.z04 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=4 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=4 order by 1')
+		as ct(zone text,"2.9_1.6" text,"3.3_2.5" text,"4.0_3.0" text,"5.5_3.6" text);
 
- create table cimis_15day_zone_enum.z04 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=4 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=4 order by 1')
- as ct(zone text,"2.9_1.6" text,"3.3_2.5" text,"4.0_3.0" text,"5.5_3.6" text);
+		create table lt_15day_zone_enum.z05 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=5 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=5 order by 1')
+		as ct(zone text,"2.9_1.5" text,"3.3_2.5" text,"3.9_2.9" text,"5.1_3.3" text,"6.0_4.0" text);
 
- create table cimis_15day_zone_enum.z05 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=5 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=5 order by 1')
- as ct(zone text,"2.9_1.5" text,"3.3_2.5" text,"3.9_2.9" text,"5.1_3.3" text,"6.0_4.0" text);
+		create table lt_15day_zone_enum.z06 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=6 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=6 order by 1')
+		as ct(zone text,"2.7_1.3" text,"3.2_2.0" text,"3.3_2.6" text,"3.9_2.9" text,"5.1_3.3" text,"6.0_4.0" text);
 
- create table cimis_15day_zone_enum.z06 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=6 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=6 order by 1')
- as ct(zone text,"2.7_1.3" text,"3.2_2.0" text,"3.3_2.6" text,"3.9_2.9" text,"5.1_3.3" text,"6.0_4.0" text);
+		create table lt_15day_zone_enum.z07 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=7 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=7 order by 1')
+		as ct(zone text,"2.7_1.3" text,"3.2_2.0" text,"3.2_2.6" text,"3.7_2.7" text,"4.1_3.1" text,"5.1_3.3" text);
 
- create table cimis_15day_zone_enum.z07 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=7 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=7 order by 1')
- as ct(zone text,"2.7_1.3" text,"3.2_2.0" text,"3.2_2.6" text,"3.7_2.7" text,"4.1_3.1" text,"5.1_3.3" text);
+		create table lt_15day_zone_enum.z08 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=8 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=8 order by 1')
+		as ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.9" text,"4.2_3.1" text,"5.2_3.3" text);
 
- create table cimis_15day_zone_enum.z08 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=8 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=8 order by 1')
- as ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.9" text,"4.2_3.1" text,"5.2_3.3" text);
+		create table lt_15day_zone_enum.z09 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=9 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=9 order by 1')
+		ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"5.0_3.2" text,"5.4_3.6" text);
 
- create table cimis_15day_zone_enum.z09 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=9 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=9 order by 1')
- ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"5.0_3.2" text,"5.4_3.6" text);
+		create table lt_15day_zone_enum.z10 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=10 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=10 order by 1')
+		ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.2" text,"5.3_3.5" text,"5.8_3.9" text);
 
- create table cimis_15day_zone_enum.z10 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=10 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=10 order by 1')
- ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.2" text,"5.3_3.5" text,"5.8_3.9" text);
+		create table lt_15day_zone_enum.z11 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=11 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=11 order by 1')
+		ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.2_3.7" text,"5.3_3.4" text);
 
- create table cimis_15day_zone_enum.z11 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=11 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=11 order by 1')
- ct(zone text,"2.7_1.3" text,"3.1_2.5" text,"3.2_1.9" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.2_3.7" text,"5.3_3.4" text);
+		create table lt_15day_zone_enum.z12 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=12 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=12 order by 1')
+		ct(zone text,"2.5_1.0" text,"3.0_1.7" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.2_3.7" text,"5.3_3.4" text);
 
- create table cimis_15day_zone_enum.z12 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=12 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=12 order by 1')
- ct(zone text,"2.5_1.0" text,"3.0_1.7" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.2_3.7" text,"5.3_3.4" text);
+		create table lt_15day_zone_enum.z13 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=13 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=13 order by 1')
+		ct(zone text,"2.7_1.4" text,"3.1_1.8" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.2_3.7" text,"5.3_3.4" text);
 
- create table cimis_15day_zone_enum.z13 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=13 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=13 order by 1')
- ct(zone text,"2.7_1.4" text,"3.1_1.8" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.2_3.7" text,"5.3_3.4" text);
+		create table lt_15day_zone_enum.z14 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=14 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=14 order by 1')
+		ct(zone text,"2.7_1.4" text,"3.1_1.8" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.3_3.3" text,"5.6_3.8" text);
 
- create table cimis_15day_zone_enum.z14 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=14 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=14 order by 1')
- ct(zone text,"2.7_1.4" text,"3.1_1.8" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.9_3.1" text,"5.3_3.3" text,"5.6_3.8" text);
+		create table lt_15day_zone_enum.z15 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=15 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=15 order by 1')
+		ct(zone text,"2.7_1.4" text,"3.1_1.8" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.6_3.1" text,"5.0_3.1" text,"5.3_3.4" text,"5.6_3.8" text);
 
- create table cimis_15day_zone_enum.z15 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=15 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=15 order by 1')
- ct(zone text,"2.7_1.4" text,"3.1_1.8" text,"3.1_2.5" text,"3.4_2.1" text,"3.5_2.6" text,"3.8_2.8" text,"4.1_3.1" text,"4.6_3.1" text,"5.0_3.1" text,"5.3_3.4" text,"5.6_3.8" text);
+		create table lt_15day_zone_enum.z16 as
+		select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.lt_15day_best_zone_in_zones where zones=16 group by 1,2 order by 1,2','select distinct moved from avg_0625.lt_15day_best_zone_in_zones where zones=16 order by 1')
+		ct(zone text,"2.7_1.3" text,"3.0_1.8" text,"3.1_2.5" text,"3.3_2.1" text,"3.4_2.7" text,"3.8_2.3" text,"3.8_2.9" text,"4.1_3.1" text,"4.6_3.1" text,"5.0_3.1" text,"5.3_3.4" text,"5.6_3.8" text);
 
- create table cimis_15day_zone_enum.z16 as
- select * from crosstab('select moved,best,case when (count(*) <= 5 ) then string_agg(station_id::text,'','' order by station_id) else ''#''||count(*) end from avg_0625.cimis_15day_best_zone_in_zones where zones=16 group by 1,2 order by 1,2','select distinct moved from avg_0625.cimis_15day_best_zone_in_zones where zones=16 order by 1')
- ct(zone text,"2.7_1.3" text,"3.0_1.8" text,"3.1_2.5" text,"3.3_2.1" text,"3.4_2.7" text,"3.8_2.3" text,"3.8_2.9" text,"4.1_3.1" text,"4.6_3.1" text,"5.0_3.1" text,"5.3_3.4" text,"5.6_3.8" text);
+	#+END_SRC
 
- #+END_SRC
+	#+RESULTS:
 
- #+RESULTS:
-
-
-**** Final Cimis_15day Zones
+**** Final lt_15day Zones
 
  I'm honestly not sure this is still correct, I don't remember the numbers being
  so bad in the comparisons.
@@ -881,20 +1011,20 @@ SELECT 134
  #+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
  select fft.require_fft();
 
- create view final_cimis_15day_zones as
+ create or replace view final_lt_15day_zones as
  with a as (
 		select station_id,st_value(r.rast,16,x,y) as v
-		from compare.cimis_15day_xy as s, avg_0625.rasters r
+		from compare.lt_15day_xy as s, avg_0625.rasters r
 		where run='avg_0625'
    ),
    m as (
 		select station_id,st_value(r.rast,16,x,y) as v
-		from compare.cimis_15day_xy as s, avg_0625.rasters r
+		from compare.lt_15day_xy as s, avg_0625.rasters r
 		where run='move'
    ),
    f as (
 		select station_id,st_value(r.rast,1,x,y) as v
-		from compare.cimis_15day_xy as s, final_zones_raster r
+		from compare.lt_15day_xy as s, final_zones_raster r
    )
    select
    station_id,
@@ -904,42 +1034,51 @@ SELECT 134
    b.zone as best
    from a join m using (station_id) join f using (station_id)
    join avg_0625.final_zone_parameters p on (f.v=p.v)
-   join compare.cimis_15day_best_final_zone b using (station_id)
+   join compare.lt_15day_best_final_zone b using (station_id)
    join avg_0625.final_zone_parameters aa on (a.v=aa.zone_id)
    join avg_0625.final_zone_parameters mm on (m.v=mm.zone_id)
-   where b.zones=16 and aa.zones=16 and mm.zones=16
+   where p.zones=16 and b.zones=16 and aa.zones=16 and mm.zones=16
    order by station_id;
 
  #+END_SRC
 
  #+RESULTS:
+ require_fft
 
-**** Average Cimis_15day Comparisons
+ CREATE VIEW
+ require_fft
+
+ CREATE VIEW
+ require_fft
+
+ CREATE VIEW
+
+**** Average lt_15day Comparisons
 
  Alternatively, we could look at the predicted zone of the average of the
- cimis_15days in each zone.  This would sort of say how well the zone estimates the
- average of the cimis_15days within the zone.
+ lt_15days in each zone.  This would sort of say how well the zone estimates the
+ average of the lt_15days within the zone.
 
- First, find the average eto, for all the cimis_15days within the zone.  This is what
- will be compared to the raster zones.  The compare.cimis_15day_eto_z view shows the
- average eto for each set of cimis_15days in each zone for each set of zone classes.
+ First, find the average eto, for all the lt_15days within the zone.  This is what
+ will be compared to the raster zones.  The compare.lt_15day_eto_z view shows the
+ average eto for each set of lt_15days in each zone for each set of zone classes.
 
  #+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
-   create materialized view cimis_15day_eto_zone_avg as
+   create materialized view lt_15day_eto_zone_avg as
    with
      z(zones) as (
 			select generate_series(1,16)
      ),
      m as (
 			select zones,station_id,st_value(r.rast,zones,x,y) as zone_id
-			from z,compare.cimis_15day_xy as s, avg_0625.rasters r
+			from z,compare.lt_15day_xy as s, avg_0625.rasters r
 			where run='move'
      ),
    a as (select
-		CASE WHEN ((extract(month from ymd))::integer <10) THEN (extract(year from ymd))::integer ELSE
-         (extract(year from ymd))::integer + 1 END as wy,
-		(extract(month from ymd))::integer as month,
-		(extract(day from ymd))::integer as day,
+		CASE WHEN ((extract(month from ymd15))::integer <10) THEN (extract(year from ymd15))::integer ELSE
+         (extract(year from ymd15))::integer + 1 END as wy,
+		(extract(month from ymd15))::integer as month,
+		(extract(day from ymd15))::integer as day,
 			station_id,s_eto
 			from compare.ymd15 ),
    b as (
@@ -947,23 +1086,21 @@ SELECT 134
 		from a join m using (station_id)
 		group by zones,zone_id,month,day
    ),
- -- min(count)/10 is about the number of cimis_15days
+ -- min(count)/10 is about the number of lt_15days
    c as (
-		select zones,zone_id,(min(count)/10)::integer,array_agg(eto order by CASE WHEN (month<10) THEN month+12 ELSE month END,day) as eto
+		select zones,zone_id,(min(count)/10)::integer as count,array_agg(eto order by CASE WHEN (month<10) THEN month+12 ELSE month END,day) as eto
 		from b group by zones,zone_id
    )
    select * from c where array_length(eto,1)=52;
  #+END_SRC
 
  #+RESULTS:
- SELECT 129
- SELECT 133
 
  And now that we have the average ETo zone value from each set of zones, we can
- compare the best fit average cimis_15day values to the best fit
+ compare the best fit average lt_15day values to the best fit
 
  #+BEGIN_SRC sql :results raw :database eto_zones :engine postgresql
-     create or replace view cimis_15day_eto_zone_avg_best as
+     create or replace view lt_15day_eto_zone_avg_best as
      with z as (
 			select zones,zone,
 			ifft(ARRAY[p0,p1,p2],ARRAY[0.0,h1,h2],52) as r
@@ -978,7 +1115,7 @@ SELECT 134
 			select zones,zone,s.zone_id,
 			fft.w_rmse(r,s.eto,w) as rmse
 			from w,
-			z join cimis_15day_eto_zone_avg s using (zones)
+			z join lt_15day_eto_zone_avg s using (zones)
      ),
      m as (
 			select zones,zone,zone_id,
@@ -986,7 +1123,7 @@ SELECT 134
 			rmse
 			from r
      )
-     select zones,p.zone as raster_zone,m.zone as cimis_15day_zone
+     select zones,p.zone as raster_zone,m.zone as lt_15day_zone
      from m
      join avg_0625.final_zone_parameters p using (zones,zone_id)
      where min=rmse;
@@ -995,6 +1132,454 @@ SELECT 134
 
  #+RESULTS:
  CREATE VIEW
+ CREATE VIEW
+ CREATE VIEW
+
+
+* ETo modifications
+
+I have been having a long term back and forth with DWR on the best possible
+method to include the cimis lt_15day data into the ETo Zone Maps.  We have
+had multiple discussions on what the best method to do this would be.  Bekele
+has wanted to modify the ETo zone map values to include the ETo Station data. I
+have been resistant to that, since I only thought it confused matters.
+
+Recently, I've had a bit of an epiphany about how we might go about this.  Since
+we have the ETo parameters for both the Stations, and for the underlying raster
+data, what we can do is to calculate what the ratio is between the different
+parameters that make up the ETo simplification.  That is, we can create ratios
+between the p0, p0 and H0 values. We can then use a spline fit to spread these
+ratios across all of CA. Using these updated values, we can then create a new
+zone map, that uses these values to calculate the best fit for each zone.  From
+that, we can then look at where the zones differ, and use that as an estimation
+of where we are unclear about the estimations of ET from our station
+perturbations.
+
+I think this is a superior method for a number of reasons.  First, we can
+compare to maps to really see where the differences of the two methods are, and
+Secondly, if we really want to estimate something like the total change in ETo
+from the two methods, then we can use these estimates way more reliably.  (In
+fact, we can just look at the p0 maps :)
+
+We used to station estimates, the station_* tables and the lt_15day_* tables.
+The lt_15day tables from the [[file:NOTES.org::*DWR%20Long%20term%20average][DWR Long term average]] data, and their
+calcutations.  This is the data that we want to use.  The FFT values for the
+stations is compare.lt_15day_fft, as defined in [[file:NOTES.org::*Station%20FFT][Station FFT]].
+
+ #+header: :engine postgresql
+ #+header: :database eto_zones
+ #+BEGIN_SRC sql :results raw
+ select fft.require_fft();
+select * from compare.lt_15day_fft
+limit 4;
+ #+END_SRC
+
+ #+RESULTS:
+ station_id	p0	p1	h1	p2	h2
+ 2	4.377	3.368	270	-0.098	-17.585
+ 5	3.907	2.918	269	-0.118	-36.357
+ 6	3.975	2.992	272	-0.033	-33.617
+ 7	3.846	3.041	269	-0.061	-19.140
+
+Super! Now we want to compare this data with the raster long term averages. The
+raster long term average data exists in the file, fft.raster_15avg_ed. There is
+one for every pixel, we just need to join that to the station data. We created a
+table for the station's associated pid from compare.station_xy that combines the
+station_info w/ the cimis boundaries, so we can just use that. Note, however,
+the lt_* data reports some stations considerably far from the station_info data.
+We are assuming the station info is correct.
+
+ #+header: :engine postgresql
+ #+header: :database eto_zones
+ #+BEGIN_SRC sql
+ with a as (
+ select *,
+ st_distance(st_transform(st_setsrid(st_makepoint(longitude,latitude),4269),3310),
+             st_setsrid(st_makepoint(st_x,st_y),3310)) as diff
+ from compare.station_xy s
+ join compare.lt_15day_ll lt using (station_id)
+)
+select station_id,longitude,latitude,diff::integer
+from a
+where diff > 500
+order by diff desc;
+#+END_SRC
+
+#+RESULTS:
+| station_id | longitude | latitude |  diff |
+|------------+-----------+----------+-------|
+|        135 |  -114.666 |   33.557 | 15431 |
+|        196 |  -122.144 |   38.685 | 11337 |
+|         88 |  -119.605 |   34.932 |  6388 |
+|         84 |  -121.311 |   39.271 |  2088 |
+|        152 |  -118.994 |   34.232 |  1407 |
+|        114 |   -121.29 |   36.359 |  1305 |
+|        170 |   -122.02 |   38.004 |  1264 |
+|        194 |  -120.851 |   37.719 |   911 |
+|        136 |  -116.154 |   33.516 |   868 |
+|        175 |  -114.726 |   33.389 |   863 |
+|         74 |  -116.973 |    33.09 |   758 |
+|         56 |  -120.761 |   37.093 |   752 |
+|         79 |  -122.421 |   38.549 |   698 |
+|         62 |  -117.222 |    33.49 |   691 |
+|         77 |   -122.41 |   38.434 |   614 |
+|         90 |  -120.479 |   41.433 |   589 |
+|        200 |  -116.258 |   33.746 |   553 |
+
+Here's the raster Long_term ET parameters
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql
+ create view compare.r_ymd15_fft as
+ select station_id,
+ e[1] as p0,e[2] as p1,d[2] as h1,
+ e[3] as p2,d[3] as h2
+from compare.station_xy
+join fft.raster_15avg_ed
+using (pid);
+#+END_SRC
+
+#+RESULTS:
+| CREATE VIEW |
+|-------------|
+
+
+okay we need the same data for the data from the Spatial CIMIS.  Well it
+turns out we already have this data (at least the raw eto data) in the file
+compare.ymd15.  This reads in data that was exported from the spatial cimis
+data.  It's the station and raster data for all the points in time that stations
+reported data for our calculations.
+
+So we just need to calculate the station fft data (which we already have
+somewhere, but we can calculate here.  Similar to the lt_15day_fft, we'll
+calculate the compare.raster_station_fft as :
+
+ #+header: :engine postgresql
+ #+header: :database eto_zones
+ #+BEGIN_SRC sql :results raw
+select fft.require_fft();
+create view compare.s_ymd15_fft as
+with v as (
+ select station_id,
+ extract (month from ymd15) as m,
+ extract (day from ymd15) as d,
+ count(*) as count,
+ avg(r_eto) as r_eto,
+ avg(s_eto) as s_eto
+ from compare.ymd15
+ group by station_id,m,d
+),
+e as (
+ select station_id,(avg(count))::decimal(4,1) as window_count,
+ fft(array_agg(r_eto order by case when (m<10) then m+12 else m end)) as r_eto,
+ fft(array_agg(s_eto order by case when (m<10) then m+12 else m end)) as s_eto
+ from v
+ group by station_id
+)
+select station_id,window_count,
+(r_eto).e[1]::decimal(6,3) as r_p0,
+(r_eto).e[2]::decimal(6,3) as r_p1,
+(r_eto).d[2]::integer as r_h1,
+--(r_eto).e[3]::decimal(6,3) as r_p2,
+--(r_eto).d[3]::decimal(6,3) as r_h2,
+(s_eto).e[1]::decimal(6,3) as s_p0,
+(s_eto).e[2]::decimal(6,3) as s_p1,
+(s_eto).d[2]::integer as s_h1
+--(s_eto).e[3]::decimal(6,3) as s_p2,
+--(s_eto).d[3]::decimal(6,3) as s_h2
+from e;
+#+END_SRC
+
+ #+RESULTS:
+ require_fft
+
+
+Now, we need to calculate the ratios.  For the s_eto data, we'll use the raster
+data calculated only for the same time frame.  For the long_term rasters, we'll
+use the complete raster record.
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+create or replace view compare.lt_s_ratio as
+with s as (
+select
+station_id,window_count as station_overlap_yrs,
+r_p0 as s_r_p0,
+r_p1 as s_r_p1,
+s_p0 as s_p0,
+s_p1 as s_p1,
+(s_p0/r_p0)::decimal(6,3) as s_p0_ratio,
+(s_p1/r_p1)::decimal(6,3) as s_p1_ratio
+from compare.s_ymd15_fft
+where window_count > 5
+),
+lt as (
+select station_id,
+r.p0::decimal(6,3) as r_p0,
+r.p1::decimal(6,3) as r_p1,
+lt.p0 as lt_p0,
+lt.p1 as lt_p1,
+(lt.p0/r.p0)::decimal(6,3) as lt_p0_ratio,
+(lt.p1/r.p1)::decimal(6,3) as lt_p1_ratio
+from compare.r_ymd15_fft r join
+compare.lt_15day_fft lt using (station_id)
+)
+select station_id,
+r_p0,r_p1,
+lt_p0,lt_p1,
+lt_p0_ratio,
+lt_p1_ratio,
+s.station_overlap_yrs,
+s_r_p0,s_r_p1,
+s_p0,s_p1,
+s_p0_ratio,
+s_p1_ratio
+from s full outer join lt using (station_id)
+#+END_SRC
+
+#+RESULTS:
+
+** Grass Processing
+
+In order to use our spline fitting routine from grass, we need to export the
+data into a CSV file for import into grass.
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+select fft.require_fft();
+create temp view tmp_compare as
+select station_id,station_overlap_yrs,
+s_p0,s_r_p0,lt_p0,r_p0,lt_p0_ratio,s_p0_ratio
+from compare.lt_s_ratio
+order by station_id;
+
+create temp view tmp_station_compare as
+select
+station_id,st_x,st_y,i.elevation*0.3048 as z,
+station_overlap_yrs,
+s_p0,s_r_p0,lt_p0,r_p0,lt_p0_ratio,s_p0_ratio
+from tmp_compare join compare.station_info i using (station_id)
+join compare.station_xy using (station_id);
+\COPY (select * from tmp_station_compare order by station_id) to ~/lt_s_ratio.csv with csv header
+#+END_SRC
+
+
+#+BEGIN_SRC bash
+v.in.ascii --overwrite input=~/lt_s_ratio.csv x=2 y=3 z=4 output=ratio format=point separator=,\
+columns='station_id int,x double precision,y double,z double, \
+station_overlap_yrs double,s_p0 double,s_r_p0 double,lt_p0 double,r_p0 double,lt_p0_ratio double,s_p0_ratio double'
+#+END_SRC
+
+When we get to the part where we try and create a spline fit through these
+ratios, we have overshooting issues when points that are close together have a
+large change in their ratio.  We've made special zscale,smooth, and tension
+parameters for this fit.
+
+#+BEGIN_SRC
+#export GRASS_RENDER_IMMEDIATE=png;
+export GRASS_RENDER_WIDTH=510;
+export GRASS_RENDER_HEIGHT=560;
+g.region -d b=-100 t=2500 tbres=1000;
+for r in s lt; do
+for s in 0 0.02; do
+for z in 0.1 ; do
+for t in 3 5 7 10; do
+ p0=${r}_s${s}_z${z}_t${t}_p0;
+ v.vol.rst --overwrite input=ratio wcolumn=${r}_p0_ratio \
+  cross_input=Z@2km maskmap=state@2km \
+ tension=${t} zscale=${z} smooth=${s}  cross_output=${p0} \
+ where="${r}_p0_ratio is not null and station_overlap_yrs > 4";
+ r.mapcalc --overwrite expression="r${p0}=if($p0>0.8,$p0,1)";
+ r.colors map=r${p0} color=gyr;
+ export GRASS_RENDER_FILE="${p0}.png";
+ d.mon --overwrite start=png;
+ d.erase;
+ d.rast r${p0};
+ d.legend title="${p0}"
+ raster=r${p0};
+ d.mon stop=png;
+done;done;done;done 2>&1 | tee vol.rst.txt
+#g.region -d
+#+END_SRC
+
+If we look at these values we can see a few things.  First, if we require the
+smoothing to be s=0, then we get overshoot until we get to t=7.  Before that we
+have some overshoot. The biggest overshoot in the stations is 1.21, so that's
+how we can see the size of the overshoot.  For the lower t values, where `s=0`,
+we have some pretty large overshoot.  For s=0.02, then we can get away with
+t=5.  Later on, we actually calculate the eto_p0 values, using all these.  But
+looking at the ratios, the ones that look most likely to me are the values;
+s_s0_z0.1_t7 and s_s0.02_z0.1_t5.
+
+*** Best Modified Stations
+
+Okay, so we've choosen the two ratios above to modify our ETo data. Let's get
+that data into our postgres setup.
+
+
+#+BEGIN_SRC bash
+ # In grass
+ cd ~/eto-zone-maps/station_comparison
+ r.out.xyz separator=',' input=s_s0_z0.1_t7_p0,s_s0.02_z0.1_t5_p0 output=spline_ratios.csv
+#+END_SRC
+
+Now import these data
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+create temp table splines_in (
+east integer,north integer,
+"s0_z0.1_t7" float,"s0.02_z0.1_t5" float);
+\COPY splines_in from splines_ratio.csv with csv
+
+create table compare.p0_grass_input_spline_ratios as
+select pid,'s0_z0.1_t7'::text as spline,"s0_z0.1_t7" as p0_ratio
+from splines_in
+join cimis_boundary using (east,north)
+union
+select pid,'s0.02_z0.1_t75'::text as spline,"s0.02_z0.1_t5" as p0_ratio
+from splines_in
+join cimis_boundary using (east,north);
+#+END_SRC
+
+And now let's find the best zone for the newly made pixels. This is how we do
+that. We take the calculated, ftp values for each pixel, and then we multiply
+the p0 value by the ratio in the p0_grass_input_spline_ratio table. We have a
+new set or parameters. Then we just calculate the RMSE for these new data, for
+each of the 16 parameters, and then take the lowest one, and we have our
+modified zone.  The only trick here, is that this RMSE verision is on the ifft
+of the ftp values, not the original data itself.
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+select fft.require_fft();
+
+create materialized view compare.station_adjusted_pixel_zones as
+with
+p as ( -- p are the new (station corrected) pixel values
+ select pid,
+ spline,
+ ifft(ARRAY[e[1]*p0_ratio,e[2],e[3]],d,52) as eto
+ from
+ fft.raster_15avg_ed join
+ compare.p0_grass_input_spline_ratios using (pid)
+),
+d as ( -- Every zone,(per # zones), new_pixel, weights
+ select pid,spline,zone,zones,
+ unnest(z.eto) as z,
+ unnest(p.eto) as p,
+ unnest(w) as w
+ from avg_0625.final_zone_parameters z
+ cross join p
+ cross join (select w from fft.weights where weight_id=3) as w
+ where z.zones=16
+),
+r as ( -- r has all the RMSE per zone
+ select pid,spline,zone,zones,sqrt(sum(w^2*(z-p)^2))/sum(w) as rmse
+ from d
+ group by pid,spline,zone,zones
+),
+n as (
+ select pid,spline,zone,zones,rmse,
+ min(rmse) OVER (partition by pid,spline) as min
+ from r
+)
+select * from n where rmse=min;
+#+END_SRC
+
+#+RESULTS:
+require_fft
+
+SELECT 210536
+
+OK, now we have these updated locations.  We need to do some things here, we
+need to export the images.  Also, we need to see how many pixels have switched
+in applying this ratio.
+
+If we want to export, we want to include the clever pixel values, and we want to
+add the colors too.  The best_final
+
+#+BEGIN_SRC bash
+psql -At -d eto_zones \
+-c 'select east,north,v from cimis_boundary join compare.station_adjusted_pixel_zones using (pid) join avg_0625.final_zone_parameters using (zone,zones) where zones=16 and spline='s0_z0.1_t7' |\
+ r.in.xyz separator='|' input=- method=min output=adjusted_zone type=CELL --overwrite
+#+END_SRC
+
+#+BEGIN_SRC bash
+psql -At -d eto_zones \
+-c 'select fft.require_fft(); select east,north,v from cimis_boundary join avg_0625.total_move_rmse_min c using (pid) join avg_0625.final_zone_parameters z using  (zone_id,zones) where zones=16' |\
+ r.in.xyz separator='|' input=- method=min output=computed_zones type=CELL --overwrite
+#+END_SRC
+
+#+BEGIN_SRC bash
+psql -At -d eto_zones -c 'select east,north,val from final_zones_pixels' |\
+ r.in.xyz separator='|' input=- method=min output=final_zones type=CELL --overwrite
+#+END_SRC
+
+#+BEGIN_SRC bash
+for i in final_zones computed_zones adjusted_zones; do
+r.out.gdal input=$i output=$i.png format=PNG
+done
+#+END_SRC
+
+This is how you can get the color value for each value
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+select fft.require_fft();
+select
+format('%s:%s:%s:%s',v,hex_to_int(substring(color,2,2)),
+hex_to_int(substring(color,4,2)),hex_to_int(substring(color,6,2)))
+from avg_0625.final_zone_parameters
+join zone_colors using (zone)
+where zones=16
+order by v;
+#+END_SRC
+
+And this is how you can get a crosstab of the comparisons of the original and
+adjusted zones
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+select fft.require_fft();
+ create table compare.adjusted_crosstab as
+ select * from crosstab('with a as (select z.zone as orig,n.zone as adj from avg_0625.total_move_rmse_min o join compare.station_adjusted_pixel_zones n using (pid,zones) join avg_0625.final_zone_parameters z using (zone_id,zones) where zones=16) select orig,adj,count(*) from a group by 1,2 order by 1,2','select distinct zone from avg_0625.final_zone_parameters where zones=16 order by 1')
+ ct(zone text,"2.3_0.5" int,"2.7_1.3" int,"3.0_1.8" int,"3.1_2.5" int,"3.3_2.1" int,"3.4_2.7" int,"3.8_2.3" int,"3.8_2.9" int,"4.1_3.1" int,"4.6_3.1" int,"5.0_3.1" int,"5.1_3.6" int,"5.3_3.4" int,"5.6_3.8" int,"6.1_4.1" int,"6.6_4.3" int);
+#+END_SRC
+
+#+RESULTS:
+require_fft
+
+SELECT 16
+
+*** Errata
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+-- Not sure what this query is for
+with r as (
+ select *,st_setsrid(st_makepoint(st_x,st_y),3310) as pt
+ from station_xy join lt_s_ratio using (station_id)
+ where lt_p0_ratio is not null and station_overlap_yrs>2
+)
+select
+r1.station_id,r2.station_id,
+r1.key,r2.key,
+r1.lt_p0_ratio,r2.lt_p0_ratio,
+abs((r1.lt_p0_ratio-r2.lt_p0_ratio)/st_distance(r1.pt,r2.pt)) as d
+from r r1 join r r2 on
+(r1.station_id < r2.station_id )
+order by d desc;
+#+END_SRC
+
 
 * Display
 
@@ -1002,12 +1587,143 @@ SELECT 134
 #+header: :database eto_zones
 #+BEGIN_SRC sql :results raw
 create table
-public.cimis_15day_zone_map as
+public.lt_15day_zone_map as
 select
 station_id,
 st_transform(st_setsrid(st_makepoint(longitude,latitude),4269),3310) as centroid,
 moved as via_spatial,
 best as via_station,
 case when (moved=best) then true else false end as match
-from station_info join cimis_15day_best_zone_in_zones using (station_id)
+from station_info join lt_15day_best_zone_in_zones using (station_id)
 where zones=16;
+#+END_SRC
+
+** ETo Zone Data
+
+I need to do a better job of finding the description of everything that Mui and
+I did to calculate vector versions of our ETo Zones.  Also, how we got those
+final data into our
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+Create view public.zone_colors as
+select * from ( VALUES
+('2.3_0.5','#002673'),
+('2.7_1.3','#5290fa'),
+('3.0_1.8','#7fb6f5'),
+('3.1_2.5','#bef0ff'),
+('3.3_2.1','#267300'),
+('3.4_2.7','#38a800'),
+('3.8_2.3','#98e600'),
+('3.8_2.9','#a8a800'),
+('4.1_3.1','#668000'),
+('4.6_3.1','#734c00'),
+('5.0_3.1','#895a44'),
+('5.1_3.6','#a83800'),
+('5.3_3.4','#e64c00'),
+('5.6_3.8','#ffa200'),
+('6.1_4.1','#ffd000'),
+('6.6_4.3','#ffff00')) as colors(zone,color);
+#+END_SRC
+
+#+RESULTS:
+CREATE VIEW
+
+And now we can write a new table.
+
+#+header: :engine postgresql
+#+header: :database eto_zones
+#+BEGIN_SRC sql :results raw
+select fft.require_fft();
+create temp view zone_map_color as
+with z as (
+ select p0::decimal(6,1)||'_'||p1::decimal(6,1) as zone,
+ geom
+ from final_zones
+)
+select zone,color,v,p0,p1,h1,p2,h2,st_asKML(geom) as boundary
+from z join avg_0625.final_zone_parameters using (zone)
+join zone_colors using (zone)
+where zones=16;
+\COPY (select * from zone_map_color) to ~/eto-zone-maps/zone_map_color.csv with csv header;
+#+END_SRC
+
+#+RESULTS:
+require_fft
+
+CREATE VIEW
+COPY 220
+CREATE VIEW
+
+
+** Raster ETo Display
+I realize I never actually created any raster images from the ETo values.  I can
+do a quick display of the ETo (P0) values before and after our ETo modification,
+and from that we can see what sort of differences in the Average ETo this brings
+about.  The easiest way to do this is probably to use the r.in.xyz function in
+grass.  From this I should also be able to get some good images for some
+particular station comparisons as well.
+
+We need to get rasters for the first two powers as well as the actually ETo_zone
+map.
+
+#+BEGIN_SRC bash
+# First Power
+psql -At -d eto_zones \
+-c 'select east,north,e[1] from fft.raster_15avg_ed join cimis_boundary using (pid) order by north,east' |\
+ r.in.xyz separator='|' input=- method=min output=eto_p0 --overwrite
+# Second Power
+psql -At -d eto_zones \
+-c 'select east,north,e[2] from fft.raster_15avg_ed join cimis_boundary using (pid) order by north,east' |\
+ r.in.xyz separator='|' input=- method=min output=eto_p1 --overwrite
+# Second Phase
+psql -At -d eto_zones \
+-c 'select east,north,d[2] from fft.raster_15avg_ed join cimis_boundary using (pid) order by north,east' |\
+ r.in.xyz separator='|' input=- method=min output=eto_d1 --overwrite
+
+#+END_SRC
+
+Now, we also want to look at the differences in the ratio multiplied by the
+raster calculated eto_p0 value.  We can look at these, and see if any of them
+look particularly good or bad.  As said above, the best is probably from
+s0_z0.1_t7.  There is some blotchyness in the output, but it's not too bad.
+
+
+#+BEGIN_SRC
+g.region -d
+for r in s lt; do
+for s in 0 0.02; do
+for z in 0.1 ; do
+for t in 3 5 7 10; do
+ p0=${r}_s${s}_z${z}_t${t}_p0;
+ r.mapcalc p0_${p0}=${p0}*eto_p0;
+done;done;done;done
+#+END_SRC
+
+* Unseminar
+
+#+BEGIN_SRC
+#export GRASS_RENDER_IMMEDIATE=png;
+export GRASS_RENDER_WIDTH=510;
+export GRASS_RENDER_HEIGHT=560;
+g.region -d b=-100 t=2500 tbres=1000;
+for s in 0 0.02 0.05; do
+for z in 1 30; do
+for t in 3 5 10 20; do
+ ws=ws_s${s}_z${z}_t${t};
+ v.vol.rst --overwrite input=et wcolumn=day_wind_spd_avg \
+  cross_input=Z@2km maskmap=state@2km \
+ tension=${t} zscale=${z} smooth=${s}  cross_output=${ws} \
+ where="day_wind_spd_avg_qc in ('K','Y','')";
+ r.colors map=${ws} rast=U2;
+ export GRASS_RENDER_FILE="${ws}.png";
+ d.mon --overwrite start=png;
+ d.erase;
+ d.rast ${ws};
+ d.legend title="${ws}"
+ raster=${ws};
+ d.mon stop=png;
+done;done;done 2>&1 | tee vol.rst.txt
+#g.region -d
+#+END_SRC

@@ -34,9 +34,10 @@ and ymd <= (format('%s-%s-%s',y,m,d))::date + '7 days'::interval);
 create index raster_ymd on raster(ymd);
 create index avg_dates_ymd on avg_dates(ymd);
 
+-- One 2017-11-26, I altered this command, and renamed ymd back to ymd15, do avoid confusion.
 create materialized view ymd15 as
 select station_id,
-ymd15 as ymd,
+ymd15 as ymd15,
 count(*) as count,
 avg(s.eto)::decimal(6,2) as s_eto,
 avg(r.eto)::decimal(6,2) as r_eto,
@@ -47,6 +48,41 @@ join avg_dates using (ymd)
 where s.eto is not null
 and r.eto is not null
 group by station_id,ymd15;
+
+
+create materialized view ymd15_station_raster_whisker as
+select station_id, ymd15, count(*) as r_count,
+avg(eto) as eto_r,whisker(eto::numeric) as eto_rw,
+avg(tn) as tn_r,whisker(tn::numeric) as tn_rw,
+avg(tx) as tx_r,whisker(tx::numeric) as tx_rw,
+avg(tdew) as tdew_r,whisker(tdew::numeric) as tdew_rw,
+avg(rs) as rs_r,whisker(rs::numeric) as rs_rw,
+avg(rso) as rso_r,whisker(rso::numeric) as rso_rw,
+avg(rnl) as rnl_r,whisker(rnl::numeric) as rnl_rw,
+avg(u2) as u2_r,whisker(u2::numeric) as u2_rw,
+avg(k) as k_r,(whisker(k::numeric) as k_rw
+from raster join avg_dates using (ymd)
+group by station_id,m,d;
+full outer join
+select station_id, ymd15, count(*) as s_count,
+avg(asce_eto) as eto_s,whisker(asce_eto::numeric) as eto_sw,
+avg(air_tmp_min) as tn_s,whisker(air_tmp_min::numeric) as tn_sw,
+avg(air_tmp_max) as tx_s,whisker(air_tmp_max::numeric) as tx_sw,
+avg(dew_tmp) as tdew_s,whisker(dew_tmp::numeric) as tdew_sw,
+avg(solrad_net) as rs_s,whisker(solrad_net::numeric) as rs_sw,
+--avg(rso) as rso_s,hisker(rso::numeric) as rso_sw,
+--avg(rnl) as rnl_s,whisker(rnl::numeric) as rnl_sw,
+avg(wind_speed_avg) as u2_s,whisker(wind_speed_avg::numeric) as u2_sw,
+--avg(k) as k_r,(whisker(k::numeric) as kr_w
+from station join avg_dates using (ymd)
+group by station_id,m,d
+full outer join
+select station_id,ymd15
+avg(eto) as eto_lt,whisker(eto::numeric) as eto_ltw
+from lt_15day join
+(select ymd15,extract(doy from ymd) as doy from avg_dates) as d
+group by station_id,ymd15;
+
 
 create materialized view md15 as
 select station_id,
@@ -64,16 +100,16 @@ whisker(k::numeric) as k_w
 from raster join avg_dates using (ymd)
 group by station_id,m,d;
 
-create view compare15_avg as
-select station_id,
-m,d,
-count(*) as count,
-whisker(r_eto::numeric) as r_eto_w,
-whisker(s_eto::numeric) as s_eto_w,
-whisker(sdiffr_eto::numeric) as sdiffr_eto_w
-from ymd15
-join avg_dates using (ymd)
-group by station_id,m,d;
+-- create view compare15_avg as
+-- select station_id,
+-- m,d,
+-- count(*) as count,
+-- whisker(r_eto::numeric) as r_eto_w,
+-- whisker(s_eto::numeric) as s_eto_w,
+-- whisker(sdiffr_eto::numeric) as sdiffr_eto_w
+-- from ymd15
+-- join avg_dates using (ymd)
+-- group by station_id,m,d;
 
 create materialized view compare15 as
 select station_id,
