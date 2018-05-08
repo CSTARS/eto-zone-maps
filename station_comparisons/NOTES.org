@@ -1701,7 +1701,12 @@ for t in 3 5 7 10; do
 done;done;done;done
 #+END_SRC
 
+
 * Unseminar
+
+** Wind Speed Changes
+
+In order to examine some of the wind-speed changes, I've added
 
 #+BEGIN_SRC
 #export GRASS_RENDER_IMMEDIATE=png;
