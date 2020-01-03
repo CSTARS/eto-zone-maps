@@ -1,5 +1,5 @@
 \set package fft
-\set js `browserify --standalone=fft fft.js`
+\set js `cat fft.js`
 
 drop type fft_t;
 create type fft_t as (
@@ -53,7 +53,7 @@ LANGUAGE PLPGSQL AS $PL$
 begin
 EXECUTE FORMAT($FORMAT$
 CREATE OR REPLACE FUNCTION require_%1$s() RETURNS VOID AS $INIT_FUNCTION$
-%2$s
+%1=%2$s
 $INIT_FUNCTION$ LANGUAGE plv8 IMMUTABLE STRICT;
 $FORMAT$,prefix,js);
 return 'require_'||prefix;
